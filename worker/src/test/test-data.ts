@@ -1,0 +1,38 @@
+import type { MemoSummary } from '../types';
+
+export const publicMemoFixtures: MemoSummary[] = [
+  {
+    id: 2,
+    slug: 'public-memo-2',
+    content: 'Second public memo',
+    excerpt: 'Second public memo',
+    visibility: 'public',
+    displayDate: '2026-03-24',
+    createdAt: '2026-03-24T12:30:00.000Z',
+    updatedAt: '2026-03-24T12:30:00.000Z',
+    publishedAt: '2026-03-24T12:30:00.000Z',
+    deletedAt: null,
+    previousVisibility: null,
+    hasImages: false,
+    imageCount: 0,
+    tagCount: 1,
+    tags: ['serverless'],
+  },
+  {
+    id: 1,
+    slug: 'public-memo-1',
+    content: 'First public memo',
+    excerpt: 'First public memo',
+    visibility: 'public',
+    displayDate: '2026-03-24',
+    createdAt: '2026-03-24T09:00:00.000Z',
+    updatedAt: '2026-03-24T09:00:00.000Z',
+    publishedAt: '2026-03-24T09:00:00.000Z',
+    deletedAt: null,
+    previousVisibility: null,
+    hasImages: false,
+    imageCount: 0,
+    tagCount: 2,
+    tags: ['cloudflare', 'meno'],
+  },
+];
