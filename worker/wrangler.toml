@@ -5,7 +5,7 @@ compatibility_date = "2025-03-24"
 [[d1_databases]]
 binding = "DB"
 database_name = "meno"
-database_id = "6ac7e5e7-03f2-49b4-94fe-bf07f0fe8570"
+database_id = "your-d1-database-id"
 
 [[r2_buckets]]
 binding = "ASSETS"
@@ -15,10 +15,12 @@ bucket_name = "meno-assets"
 crons = ["0 3 * * *"]
 
 [vars]
-APP_ORIGIN = "https://meno.guoyingwei.top"
-API_ORIGIN = "https://api.meno.guoyingwei.top"
-ASSET_PUBLIC_BASE_URL = "https://api.meno.guoyingwei.top/api/assets"
-GITHUB_ALLOWED_LOGIN = "guoyingwei6"
-GITHUB_CLIENT_ID = "Ov23lix6s4S8mZzGO01G"
-GITHUB_CLIENT_SECRET = "be63f6833e83342001e8fcc380ea23b3f2e2d664"
-SESSION_SECRET = "change-me-before-production"
+APP_ORIGIN = "https://your-frontend-domain"
+API_ORIGIN = "https://your-worker-domain"
+ASSET_PUBLIC_BASE_URL = "https://your-worker-domain/api/assets"
+GITHUB_ALLOWED_LOGIN = "your-github-username"
+GITHUB_CLIENT_ID = "your-github-oauth-client-id"
+# Secrets (set via `npx wrangler secret put`):
+#   GITHUB_CLIENT_SECRET
+#   SESSION_SECRET
+#   API_TOKEN
