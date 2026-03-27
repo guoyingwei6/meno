@@ -35,6 +35,7 @@ app.get('/assets/:key{.+}', async (c) => {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set('etag', object.httpEtag);
+  headers.set('cache-control', 'public, max-age=31536000, immutable');
 
   return new Response(object.body, { headers });
 });
