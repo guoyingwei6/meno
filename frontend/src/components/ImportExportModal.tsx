@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import JSZip from 'jszip';
 import { useTheme, colors } from '../lib/theme';
 import { createMemo, fetchDashboardMemos, uploadFile } from '../lib/api';
 import type { MemoVisibility } from '../types/shared';
@@ -8,7 +9,8 @@ interface ImportExportModalProps {
   onImportDone?: () => void;
 }
 
-// Parse flomo/meno YAML frontmatter
+// ── Parse helpers ────────────────────────────────────────────────
+
 function parseFrontmatterDate(raw: string): string {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) return new Date().toISOString().slice(0, 10);
@@ -21,18 +23,25 @@ function parseFrontmatterBody(raw: string): string {
   return match ? match[1].trim() : raw.trim();
 }
 
-// Find all "images/xxx" references in content
-function findImagePaths(content: string): string[] {
+/** Find all `images/xxx` local refs in content */
+function findLocalImagePaths(content: string): string[] {
   const results: string[] = [];
   const re = /!\[.*?\]\((images\/[^)]+)\)/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(content)) !== null) {
-    results.push(m[1]);
-  }
+  while ((m = re.exec(content)) !== null) results.push(m[1]);
   return [...new Set(results)];
 }
 
-// Generate MD export for a single memo
+/** Find all absolute image URLs in content */
+function findAbsoluteImageUrls(content: string): string[] {
+  const results: string[] = [];
+  const re = /!\[.*?\]\((https?:\/\/[^)]+)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) results.push(m[1]);
+  return [...new Set(results)];
+}
+
+/** Generate MD text for a memo (for export) */
 function memoToMD(memo: {
   slug: string;
   displayDate: string;
@@ -58,34 +67,56 @@ function memoToMD(memo: {
   return lines.join('\n');
 }
 
+/** Derive a short filename from a URL */
+function filenameFromUrl(url: string): string {
+  const path = url.split('?')[0];
+  return path.split('/').pop() || `img_${Date.now()}`;
+}
+
+// ── Component ────────────────────────────────────────────────────
+
 export const ImportExportModal = ({ onClose, onImportDone }: ImportExportModalProps) => {
   const { isDark } = useTheme();
   const c = colors(isDark);
   const [tab, setTab] = useState<'import' | 'export'>('import');
 
   // Import state
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dirInputRef = useRef<HTMLInputElement>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [visibility, setVisibility] = useState<MemoVisibility>('private');
   const [importing, setImporting] = useState(false);
-  const [log, setLog] = useState<string[]>([]);
-  const [done, setDone] = useState(false);
+  const [importLog, setImportLog] = useState<string[]>([]);
+  const [importDone, setImportDone] = useState(false);
 
   // Export state
   const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState('');
 
-  const addLog = (msg: string) => setLog((prev) => [...prev, msg]);
+  // Set webkitdirectory attribute (not in React's type defs)
+  useEffect(() => {
+    if (dirInputRef.current) {
+      dirInputRef.current.setAttribute('webkitdirectory', '');
+      dirInputRef.current.setAttribute('multiple', '');
+    }
+  }, []);
 
+  const addLog = (msg: string) => setImportLog((prev) => [...prev, msg]);
+
+  // Derived file lists from selected directory
   const mdFiles = selectedFiles.filter((f) => f.name.endsWith('.md'));
-  const imgFileMap = new Map<string, File>(
-    selectedFiles.filter((f) => !f.name.endsWith('.md')).map((f) => [f.name, f]),
+  const imgMap = new Map<string, File>(
+    selectedFiles
+      .filter((f) => !f.name.endsWith('.md') && f.webkitRelativePath.includes('/images/'))
+      .map((f) => [f.name, f]),
   );
+
+  // ── Import ──────────────────────────────────────────────────────
 
   const handleImport = async () => {
     if (mdFiles.length === 0) return;
     setImporting(true);
-    setLog([]);
-    setDone(false);
+    setImportLog([]);
+    setImportDone(false);
 
     let ok = 0;
     let fail = 0;
@@ -96,21 +127,21 @@ export const ImportExportModal = ({ onClose, onImportDone }: ImportExportModalPr
         const displayDate = parseFrontmatterDate(raw);
         let content = parseFrontmatterBody(raw);
 
-        // Upload referenced images
-        const imgPaths = findImagePaths(content);
-        for (const imgPath of imgPaths) {
+        // Upload each referenced local image
+        const localPaths = findLocalImagePaths(content);
+        for (const imgPath of localPaths) {
           const filename = imgPath.replace('images/', '');
-          const imgFile = imgFileMap.get(filename);
+          const imgFile = imgMap.get(filename);
           if (imgFile) {
             try {
               const { url } = await uploadFile(imgFile);
               content = content.replaceAll(imgPath, url);
-              addLog(`  ↑ 上传: ${filename}`);
+              addLog(`  ↑ ${filename}`);
             } catch {
-              addLog(`  ✗ 图片上传失败: ${filename}`);
+              addLog(`  ✗ 上传失败: ${filename}`);
             }
           } else {
-            addLog(`  ⚠ 未找到图片: ${filename}`);
+            addLog(`  ⚠ 未找到: ${filename}`);
           }
         }
 
@@ -125,129 +156,179 @@ export const ImportExportModal = ({ onClose, onImportDone }: ImportExportModalPr
 
     addLog(`\n完成: ${ok} 成功, ${fail} 失败`);
     setImporting(false);
-    setDone(true);
+    setImportDone(true);
     if (ok > 0) onImportDone?.();
   };
 
+  // ── Export ──────────────────────────────────────────────────────
+
   const handleExport = async () => {
     setExporting(true);
+    setExportProgress('获取笔记列表…');
     try {
       const { memos } = await fetchDashboardMemos('all');
-      const content = memos.map(memoToMD).join('\n---separator---\n\n');
-      const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
+      const zip = new JSZip();
+      const imagesFolder = zip.folder('images')!;
+      const imgCache = new Map<string, string>(); // url -> filename in zip
+
+      for (let i = 0; i < memos.length; i++) {
+        const memo = memos[i];
+        setExportProgress(`处理 ${i + 1}/${memos.length}: ${memo.displayDate}`);
+
+        let content = memo.content;
+        const urls = findAbsoluteImageUrls(content);
+
+        for (const url of urls) {
+          if (!imgCache.has(url)) {
+            try {
+              const resp = await fetch(url, { credentials: 'include' });
+              const blob = await resp.blob();
+              const ext = filenameFromUrl(url).split('.').pop() || 'jpg';
+              const imgFilename = `${memo.slug}_${imgCache.size}.${ext}`;
+              imagesFolder.file(imgFilename, blob);
+              imgCache.set(url, imgFilename);
+            } catch {
+              // keep original URL if download fails
+            }
+          }
+          const localName = imgCache.get(url);
+          if (localName) content = content.replaceAll(url, `images/${localName}`);
+        }
+
+        const md = memoToMD({ ...memo, content });
+        zip.file(`${memo.displayDate}_${memo.slug}.md`, md);
+      }
+
+      setExportProgress('压缩中…');
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `meno_export_${new Date().toISOString().slice(0, 10)}.md`;
+      a.href = URL.createObjectURL(blob);
+      a.download = `meno_export_${new Date().toISOString().slice(0, 10)}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(a.href);
+      setExportProgress(`完成！共 ${memos.length} 篇笔记，${imgCache.size} 张图片`);
+    } catch (e) {
+      setExportProgress(`失败: ${e instanceof Error ? e.message : '未知错误'}`);
     } finally {
       setExporting(false);
     }
   };
+
+  // ── Styles ───────────────────────────────────────────────────────
 
   const overlay: React.CSSProperties = {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   };
   const modal: React.CSSProperties = {
-    background: c.cardBg, borderRadius: 12, padding: 24, width: 480, maxWidth: '95vw',
+    background: c.cardBg, borderRadius: 12, padding: 24, width: 500, maxWidth: '95vw',
     maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 16,
     boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
   };
-  const tabBar: React.CSSProperties = { display: 'flex', gap: 4, borderBottom: `1px solid ${c.borderMedium}`, paddingBottom: 8 };
   const tabBtn = (active: boolean): React.CSSProperties => ({
-    border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px 12px',
+    border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px 14px',
     borderRadius: 6, fontWeight: active ? 600 : 400, fontSize: 14,
     color: active ? c.accent : c.textSecondary,
     borderBottom: active ? `2px solid ${c.accent}` : '2px solid transparent',
   });
-  const btn = (primary?: boolean): React.CSSProperties => ({
+  const btn = (primary?: boolean, disabled?: boolean): React.CSSProperties => ({
     border: primary ? 'none' : `1px solid ${c.borderMedium}`,
-    background: primary ? c.accent : c.cardBg,
+    background: primary ? (disabled ? '#aaa' : c.accent) : c.cardBg,
     color: primary ? '#fff' : c.textPrimary,
-    borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 500,
+    borderRadius: 8, padding: '8px 16px', cursor: disabled ? 'default' : 'pointer',
+    fontSize: 13, fontWeight: 500, opacity: disabled ? 0.7 : 1,
   });
   const logBox: React.CSSProperties = {
     background: c.pageBg, borderRadius: 8, padding: 12, fontSize: 12,
-    fontFamily: 'monospace', overflowY: 'auto', maxHeight: 200,
-    border: `1px solid ${c.borderMedium}`, color: c.textSecondary,
-    whiteSpace: 'pre-wrap',
+    fontFamily: 'monospace', overflowY: 'auto', maxHeight: 180, flexShrink: 0,
+    border: `1px solid ${c.borderMedium}`, color: c.textSecondary, whiteSpace: 'pre-wrap',
   };
 
   return (
     <div style={overlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={modal}>
+        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0, fontSize: 16, color: c.textPrimary }}>导入 / 导出</h3>
-          <button type="button" onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18, color: c.textTertiary }}>×</button>
+          <button type="button" onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 20, color: c.textTertiary }}>×</button>
         </div>
 
-        <div style={tabBar}>
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${c.borderMedium}`, paddingBottom: 8 }}>
           <button type="button" style={tabBtn(tab === 'import')} onClick={() => setTab('import')}>导入 MD</button>
-          <button type="button" style={tabBtn(tab === 'export')} onClick={() => setTab('export')}>导出 MD</button>
+          <button type="button" style={tabBtn(tab === 'export')} onClick={() => setTab('export')}>导出 ZIP</button>
         </div>
 
+        {/* ── Import Tab ── */}
         {tab === 'import' && (
           <>
-            <p style={{ margin: 0, fontSize: 13, color: c.textSecondary }}>
-              支持 flomo 导出格式。选择 .md 文件，同时选择 <code>images/</code> 目录下的图片文件（如有）。
+            <p style={{ margin: 0, fontSize: 13, color: c.textSecondary, lineHeight: 1.6 }}>
+              选择 flomo 导出目录（包含 .md 文件和 <code>images/</code> 子目录），图片会自动识别并上传。
             </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <input
-                ref={fileInputRef}
+                ref={dirInputRef}
                 type="file"
-                multiple
-                accept=".md,image/*"
                 style={{ display: 'none' }}
                 onChange={(e) => {
                   setSelectedFiles(Array.from(e.target.files ?? []));
-                  setLog([]);
-                  setDone(false);
+                  setImportLog([]);
+                  setImportDone(false);
                 }}
               />
-              <button type="button" style={btn()} onClick={() => fileInputRef.current?.click()}>
-                {selectedFiles.length > 0 ? `已选择 ${selectedFiles.length} 个文件 (${mdFiles.length} 篇笔记, ${imgFileMap.size} 张图片)` : '选择文件'}
+              <button type="button" style={btn()} onClick={() => dirInputRef.current?.click()}>
+                {selectedFiles.length > 0
+                  ? `已选择目录：${mdFiles.length} 篇笔记，${imgMap.size} 张图片`
+                  : '选择导出目录…'}
               </button>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                <span style={{ color: c.textSecondary }}>导入为：</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: c.textSecondary }}>
+                <span>导入为：</span>
                 {(['private', 'public', 'draft'] as MemoVisibility[]).map((v) => (
                   <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: c.textPrimary }}>
-                    <input type="radio" name="visibility" value={v} checked={visibility === v} onChange={() => setVisibility(v)} />
+                    <input type="radio" name="vis" value={v} checked={visibility === v} onChange={() => setVisibility(v)} />
                     {v === 'private' ? '私密' : v === 'public' ? '公开' : '草稿'}
                   </label>
                 ))}
               </div>
             </div>
 
-            {log.length > 0 && <div style={logBox}>{log.join('\n')}</div>}
+            {importLog.length > 0 && <div style={logBox}>{importLog.join('\n')}</div>}
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              {done && <button type="button" style={btn()} onClick={onClose}>关闭</button>}
+              {importDone && <button type="button" style={btn()} onClick={onClose}>关闭</button>}
               <button
                 type="button"
-                style={btn(true)}
+                style={btn(true, importing || mdFiles.length === 0)}
                 onClick={handleImport}
                 disabled={importing || mdFiles.length === 0}
               >
-                {importing ? `导入中… (${log.filter((l) => l.startsWith('✓')).length}/${mdFiles.length})` : `导入 ${mdFiles.length} 篇笔记`}
+                {importing
+                  ? `导入中… (${importLog.filter((l) => l.startsWith('✓')).length}/${mdFiles.length})`
+                  : `导入 ${mdFiles.length} 篇笔记`}
               </button>
             </div>
           </>
         )}
 
+        {/* ── Export Tab ── */}
         {tab === 'export' && (
           <>
-            <p style={{ margin: 0, fontSize: 13, color: c.textSecondary }}>
-              导出所有笔记为单个 MD 文件，每篇笔记包含 YAML frontmatter（slug、date、tags 等）。
+            <p style={{ margin: 0, fontSize: 13, color: c.textSecondary, lineHeight: 1.6 }}>
+              将所有笔记导出为 ZIP 文件：每篇笔记一个 .md 文件，图片下载后放在 <code>images/</code> 目录中。
             </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button type="button" style={btn(true)} onClick={handleExport} disabled={exporting}>
-                {exporting ? '导出中…' : '下载 meno_export.md'}
+            {exportProgress && (
+              <div style={{ ...logBox, maxHeight: 60 }}>{exportProgress}</div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              {!exporting && exportProgress.startsWith('完成') && (
+                <button type="button" style={btn()} onClick={onClose}>关闭</button>
+              )}
+              <button type="button" style={btn(true, exporting)} onClick={handleExport} disabled={exporting}>
+                {exporting ? '导出中…' : '下载 ZIP'}
               </button>
             </div>
           </>
