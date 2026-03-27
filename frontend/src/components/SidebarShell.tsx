@@ -19,12 +19,12 @@ interface SidebarShellProps {
   streakDays?: number;
   activeDate?: string | null;
   calendarDays?: DateCount[];
-  activeView?: 'all' | 'trash' | 'onThisDay' | 'dailyReview';
+  activeView?: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview';
   activeTag?: string | null;
   filters?: MemoFilters;
   tagTree?: TagTreeResult;
   style?: React.CSSProperties;
-  onSelectView?: (view: 'all' | 'trash' | 'onThisDay' | 'dailyReview') => void;
+  onSelectView?: (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview') => void;
   onSelectDate?: (date: string) => void;
   onSelectTag?: (tag: string | null) => void;
   onChangeFilters?: (filters: MemoFilters) => void;
@@ -180,7 +180,6 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
         </div>
         {notesExpanded && (
           <div style={styles.navSubItems}>
-            <button type="button" style={{ ...styles.filterChip, color: c.textSecondary, ...(filters.visibility != null ? styles.filterChipActive : {}) }} onClick={toggleVisibility}>{visLabel}</button>
             <button type="button" style={{ ...styles.filterChip, color: c.textSecondary, ...(filters.hasTags != null ? styles.filterChipActive : {}) }} onClick={toggleTags}>{tagFilterLabel}</button>
             <button type="button" style={{ ...styles.filterChip, color: c.textSecondary, ...(filters.hasImages != null ? styles.filterChipActive : {}) }} onClick={toggleImages}>{imgLabel}</button>
           </div>
@@ -192,6 +191,10 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
         <div style={styles.navRow}>
           <span style={styles.iconCellStatic}>🎲</span>
           <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'dailyReview' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('dailyReview')}>每日回顾</button>
+        </div>
+        <div style={styles.navRow}>
+          <span style={styles.iconCellStatic}>🔒</span>
+          <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'private' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('private')}>私密笔记</button>
         </div>
       </nav>
 

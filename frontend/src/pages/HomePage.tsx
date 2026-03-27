@@ -32,7 +32,7 @@ export const HomePage = () => {
   const c = colors(isDark);
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<'all' | 'trash' | 'onThisDay' | 'dailyReview'>('all');
+  const [activeView, setActiveView] = useState<'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview'>('all');
   const [reviewSeed, setReviewSeed] = useState(0);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [filters, setFilters] = useState<MemoFilters>({});
@@ -55,7 +55,7 @@ export const HomePage = () => {
     closeSidebarOnMobile();
   };
 
-  const handleSelectView = (view: 'all' | 'trash' | 'onThisDay' | 'dailyReview') => {
+  const handleSelectView = (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview') => {
     if (view === 'dailyReview') setReviewSeed((s) => s + 1);
     setActiveView(view);
     setSelectedDate(null);
@@ -78,7 +78,7 @@ export const HomePage = () => {
 
   const isAuthor = me?.authenticated && me.role === 'author';
 
-  const apiView = (activeView === 'onThisDay' || activeView === 'dailyReview') ? 'all' : activeView === 'all' && filters.visibility ? filters.visibility : activeView;
+  const apiView = (activeView === 'onThisDay' || activeView === 'dailyReview') ? 'all' : activeView === 'all' ? 'public' : activeView;
 
   const { data, isLoading } = useQuery<PublicMemosResponse | { memos: PublicMemosResponse['memos'] }>({
     queryKey: isAuthor ? ['dashboard-memos', apiView, selectedDate] : ['public-memos', selectedDate],
@@ -157,7 +157,7 @@ export const HomePage = () => {
   const todayYear = new Date().getFullYear().toString();
 
   const memos = useMemo(() => {
-    if (activeView === 'trash' && !isAuthor) return [];
+    if ((activeView === 'trash' || activeView === 'private') && !isAuthor) return [];
     let all = data?.memos ?? [];
     if (activeView === 'onThisDay') {
       all = all.filter((m) => {
@@ -248,6 +248,9 @@ export const HomePage = () => {
         }} /> : <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后发布 memo</div>}
         {activeView === 'trash' && !isAuthor && (
           <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后查看已删除的笔记</div>
+        )}
+        {activeView === 'private' && !isAuthor && (
+          <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后查看私密笔记</div>
         )}
         {activeView === 'trash' && isAuthor && (
           <div style={{ ...styles.trashNotice, color: c.textMuted }}>回收站内的笔记仅保留 30 天</div>
