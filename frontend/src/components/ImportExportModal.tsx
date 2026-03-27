@@ -266,10 +266,18 @@ export const ImportExportModal = ({ onClose, onImportDone }: ImportExportModalPr
                         const files = Array.from(e.target.files ?? []);
                         setImgMap(new Map(files.map((f) => [f.name, f])));
                       }} />
-                    <button type="button" style={btn()} onClick={() => imgInputRef.current?.click()}>
-                      {imgMap.size > 0
-                        ? `✓ 已选 ${imgMap.size} 张图片（匹配 ${matchedCount}/${requiredImgNames.length}）`
-                        : `② 选择上面列出的图片文件`}
+                    <button
+                      type="button"
+                      style={imgMap.size === 0
+                        ? { ...btn(true), background: '#e67e22' }  // orange = needs action
+                        : matchedCount < requiredImgNames.length
+                          ? { ...btn(true), background: '#e67e22' }
+                          : btn()}
+                      onClick={() => imgInputRef.current?.click()}
+                    >
+                      {imgMap.size === 0
+                        ? `② 选择图片文件（进入 images/ 目录，Ctrl+A 全选）`
+                        : `✓ 已选 ${imgMap.size} 张图片（匹配 ${matchedCount}/${requiredImgNames.length}）`}
                     </button>
                   </div>
                 )}
@@ -291,13 +299,23 @@ export const ImportExportModal = ({ onClose, onImportDone }: ImportExportModalPr
 
             {importLog.length > 0 && <div style={logBox}>{importLog.join('\n')}</div>}
 
+                    {/* Missing images warning */}
+            {!importing && !importDone && mdFiles.length > 0 && requiredImgNames.length > 0 && matchedCount < requiredImgNames.length && (
+              <p style={{ margin: 0, fontSize: 12, color: '#e55', background: 'rgba(220,50,50,0.08)', borderRadius: 6, padding: '6px 10px' }}>
+                ⚠ 还有 {requiredImgNames.length - matchedCount} 张图片未选择，导入后将显示为断图。请先完成第②步。
+              </p>
+            )}
+
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               {importDone && <button type="button" style={btn()} onClick={onClose}>关闭</button>}
+              {/* Allow import without images only if user explicitly sees the warning */}
               <button type="button" style={btn(true, importing || mdFiles.length === 0)}
                 onClick={handleImport} disabled={importing || mdFiles.length === 0}>
                 {importing
                   ? `导入中… (${importLog.filter((l) => l.startsWith('✓')).length}/${mdFiles.length})`
-                  : `导入 ${mdFiles.length} 篇笔记`}
+                  : requiredImgNames.length > 0 && matchedCount < requiredImgNames.length
+                    ? `强制导入（${matchedCount}/${requiredImgNames.length} 张图片）`
+                    : `导入 ${mdFiles.length} 篇笔记`}
               </button>
             </div>
           </>
