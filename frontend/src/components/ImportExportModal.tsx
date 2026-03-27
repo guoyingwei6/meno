@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import JSZip from 'jszip';
 import { useTheme, colors } from '../lib/theme';
 import { createMemo, fetchDashboardMemos, uploadFile } from '../lib/api';
@@ -94,6 +94,11 @@ export const ImportExportModal = ({ onClose, onImportDone }: ImportExportModalPr
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState('');
 
+
+  // webkitdirectory is not in React types, set via ref
+  useEffect(() => {
+    imgInputRef.current?.setAttribute('webkitdirectory', '');
+  }, []);
 
   const addLog = (msg: string) => setImportLog((prev) => [...prev, msg]);
 
@@ -269,12 +274,10 @@ export const ImportExportModal = ({ onClose, onImportDone }: ImportExportModalPr
                 {mdFiles.length > 0 ? `已选 ${mdFiles.length} 篇笔记` : '① 选择 .md 文件（可多选）'}
               </button>
 
-              {/* Image file picker */}
+              {/* Images folder picker (webkitdirectory) */}
               <input
                 ref={imgInputRef}
                 type="file"
-                accept="image/*"
-                multiple
                 style={{ display: 'none' }}
                 onChange={(e) => {
                   const files = Array.from(e.target.files ?? []);
@@ -282,7 +285,7 @@ export const ImportExportModal = ({ onClose, onImportDone }: ImportExportModalPr
                 }}
               />
               <button type="button" style={{ ...btn(), fontSize: 12 }} onClick={() => imgInputRef.current?.click()}>
-                {imgMap.size > 0 ? `已选 ${imgMap.size} 张图片` : '② 选择图片文件（可选，images/ 目录下）'}
+                {imgMap.size > 0 ? `已选图片目录：${imgMap.size} 张图片` : '② 选择 images/ 文件夹（可选，自动匹配）'}
               </button>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: c.textSecondary }}>
