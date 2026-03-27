@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useTheme, colors } from '../lib/theme';
 
 interface MemoComposerSubmitInput {
   content: string;
@@ -18,11 +19,28 @@ interface UploadedImage {
 
 const getApiBase = () => (globalThis as typeof globalThis & { __MENO_API_BASE_URL__?: string }).__MENO_API_BASE_URL__ || '';
 
+/** Renders text with #tags in green, rest in normal color — sits behind transparent textarea */
+const HighlightOverlay = ({ text, textColor }: { text: string; textColor: string }) => {
+  const parts = text.split(/(#[^\s#]+)/g);
+  return (
+    <div style={styles.highlightOverlay} aria-hidden="true">
+      {parts.map((part, i) =>
+        /^#[^\s#]+$/.test(part)
+          ? <span key={i} style={{ color: '#3aa864', fontWeight: 500 }}>{part}</span>
+          : <span key={i} style={{ color: textColor }}>{part}</span>
+      )}
+      <span>{'\n '}</span>
+    </div>
+  );
+};
+
 export const MemoComposer = ({ defaultDisplayDate, onSubmit }: MemoComposerProps) => {
   const [content, setContent] = useState('');
   const [visibility, setVisibility] = useState<'public' | 'private' | 'draft'>('public');
   const [displayDate, setDisplayDate] = useState(defaultDisplayDate);
   const [images, setImages] = useState<UploadedImage[]>([]);
+  const { isDark } = useTheme();
+  const c = colors(isDark);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -69,14 +87,21 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit }: MemoComposerProps
   };
 
   return (
-    <section style={styles.card}>
-      <textarea
-        ref={textareaRef}
-        style={styles.textarea}
-        placeholder="现在的想法是..."
-        value={content}
-        onChange={(event) => setContent(event.target.value)}
-      />
+    <section style={{ ...styles.card, background: c.cardBg, borderColor: c.borderMedium }}>
+      <div style={styles.editorWrap}>
+        <HighlightOverlay text={content} textColor={c.textPrimary} />
+        <textarea
+          ref={textareaRef}
+          style={styles.textarea}
+          placeholder="现在的想法是..."
+          value={content}
+          onChange={(event) => setContent(event.target.value)}
+          onScroll={(e) => {
+            const overlay = (e.target as HTMLElement).previousElementSibling as HTMLElement;
+            if (overlay) overlay.scrollTop = (e.target as HTMLElement).scrollTop;
+          }}
+        />
+      </div>
       {images.length > 0 ? (
         <div style={styles.imagePreviewGrid}>
           {images.map((img, i) => (
@@ -94,8 +119,21 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit }: MemoComposerProps
           ))}
         </div>
       ) : null}
-      <div style={styles.toolbar}>
-        <div style={styles.toolsLeft}>
+      <div style={{ ...styles.toolbar, borderTopColor: c.borderLight }}>
+        <div style={styles.toolsRow}>
+          <button type="button" style={{ ...styles.fmtButton, color: '#3aa864', fontWeight: 700 }} title="添加标签" onClick={() => {
+            const ta = textareaRef.current;
+            if (!ta) return;
+            const pos = ta.selectionStart;
+            const before = content.slice(0, pos);
+            const after = content.slice(pos);
+            const prefix = pos > 0 && content[pos - 1] !== ' ' && content[pos - 1] !== '\n' ? ' #' : '#';
+            setContent(before + prefix + after);
+            setTimeout(() => { ta.focus(); ta.setSelectionRange(pos + prefix.length, pos + prefix.length); }, 0);
+          }}>
+            #
+          </button>
+          <span style={styles.fmtDivider} />
           <button type="button" style={styles.fmtButton} title="加粗" onClick={() => wrapSelection('**', '**')}>
             <strong>B</strong>
           </button>
@@ -139,14 +177,12 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit }: MemoComposerProps
             }}
           />
           <label style={styles.selectWrap}>
-            <select aria-label="可见性" value={visibility} onChange={(event) => setVisibility(event.target.value as 'public' | 'private' | 'draft')} style={styles.select}>
+            <select aria-label="可见性" value={visibility} onChange={(event) => setVisibility(event.target.value as 'public' | 'private' | 'draft')} style={{ ...styles.select, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }}>
               <option value="public">公开</option>
               <option value="private">私密</option>
             </select>
           </label>
-          <label style={styles.selectWrap}>
-            <input aria-label="归属日期" type="date" value={displayDate} onChange={(event) => setDisplayDate(event.target.value)} style={styles.dateInput} />
-          </label>
+          <input aria-label="归属日期" type="date" value={displayDate} onChange={(event) => setDisplayDate(event.target.value)} style={{ ...styles.dateInput, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }} />
         </div>
         <button type="button" style={styles.submitButton} onClick={handleSubmit}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
@@ -154,6 +190,16 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit }: MemoComposerProps
       </div>
     </section>
   );
+};
+
+const sharedFont: React.CSSProperties = {
+  fontSize: 15,
+  lineHeight: 1.6,
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  letterSpacing: 'normal',
+  wordSpacing: 'normal',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
 };
 
 const styles: Record<string, React.CSSProperties> = {
@@ -164,17 +210,35 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     marginBottom: 16,
   },
+  editorWrap: {
+    position: 'relative',
+  },
+  highlightOverlay: {
+    ...sharedFont,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: '16px 20px 8px',
+    boxSizing: 'border-box',
+    overflow: 'hidden',
+    pointerEvents: 'none',
+  },
   textarea: {
+    ...sharedFont,
     width: '100%',
     minHeight: 100,
     padding: '16px 20px 8px',
     border: 'none',
     outline: 'none',
     resize: 'none',
-    fontSize: 15,
-    lineHeight: 1.6,
     boxSizing: 'border-box',
-    fontFamily: 'inherit',
+    background: 'transparent',
+    color: 'transparent',
+    caretColor: '#333',
+    position: 'relative',
+    zIndex: 1,
   },
   imagePreviewGrid: {
     display: 'flex',
@@ -214,14 +278,16 @@ const styles: Record<string, React.CSSProperties> = {
   },
   toolbar: {
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
     padding: '8px 12px',
     borderTop: '1px solid #f5f5f5',
   },
-  toolsLeft: {
+  toolsRow: {
+    flex: 1,
     display: 'flex',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 4,
   },
   fmtButton: {
@@ -256,20 +322,24 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
   },
   select: {
-    borderRadius: 6,
-    border: '1px solid #e6e6e6',
-    padding: '4px 8px',
+    borderRadius: 8,
+    border: '1px solid #e0e0e0',
+    padding: '0 8px',
     background: '#fff',
-    fontSize: 13,
-    color: '#666',
+    fontSize: 14,
+    color: '#555',
+    height: 32,
+    boxSizing: 'border-box',
   },
   dateInput: {
-    borderRadius: 6,
-    border: '1px solid #e6e6e6',
-    padding: '4px 8px',
+    borderRadius: 8,
+    border: '1px solid #e0e0e0',
+    padding: '0 8px',
     background: '#fff',
-    fontSize: 13,
-    color: '#666',
+    fontSize: 14,
+    color: '#555',
+    height: 32,
+    boxSizing: 'border-box',
   },
   submitButton: {
     border: 'none',

@@ -3,6 +3,7 @@ import rehypeRaw from 'rehype-raw';
 import { extractMarkdownImageUrls, stripMarkdownImageSyntax, stripTagSyntax } from '../lib/content';
 import { useState } from 'react';
 import type { MemoSummary } from '../types/shared';
+import { useTheme, colors } from '../lib/theme';
 
 interface MemoCardProps {
   memo: MemoSummary;
@@ -25,6 +26,8 @@ const countWords = (text: string) => {
 };
 
 export const MemoCard = ({ memo, isAuthor, onOpen, onOpenTag, onEdit, onChangeVisibility, onDelete }: MemoCardProps) => {
+  const { isDark } = useTheme();
+  const c = colors(isDark);
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -43,9 +46,9 @@ export const MemoCard = ({ memo, isAuthor, onOpen, onOpenTag, onEdit, onChangeVi
   };
 
   return (
-    <article style={styles.card}>
+    <article style={{ ...styles.card, background: c.cardBg, borderColor: c.border }}>
       <div style={styles.header}>
-        <span style={styles.date}>{memo.displayDate}</span>
+        <span style={{ ...styles.date, color: c.textMuted }}>{memo.displayDate}</span>
         <div style={styles.headerRight}>
           {copied ? <span style={styles.copiedHint}>链接已复制</span> : null}
           <div style={styles.menuWrap}>
@@ -58,7 +61,7 @@ export const MemoCard = ({ memo, isAuthor, onOpen, onOpenTag, onEdit, onChangeVi
               ···
             </button>
             {menuOpen ? (
-              <div style={styles.menuDropdown}>
+              <div style={{ ...styles.menuDropdown, background: c.cardBg, borderColor: c.border }}>
                 <button type="button" style={styles.menuItem} aria-label="查看详情" onClick={() => { setMenuOpen(false); onOpen?.(memo); }}>查看详情</button>
                 <button type="button" style={styles.menuItem} aria-label="分享" onClick={handleShare}>分享链接</button>
                 {isAuthor ? (
@@ -90,7 +93,7 @@ export const MemoCard = ({ memo, isAuthor, onOpen, onOpenTag, onEdit, onChangeVi
           </button>
         ))}
       </div>
-      <div style={isLong && !expanded ? { ...styles.content, maxHeight: 160, overflow: 'hidden' } : styles.content}>
+      <div style={isLong && !expanded ? { ...styles.content, color: c.textSecondary, maxHeight: 160, overflow: 'hidden' } : { ...styles.content, color: c.textSecondary }}>
         <ReactMarkdown
           rehypePlugins={[rehypeRaw]}
           components={{
@@ -115,11 +118,11 @@ export const MemoCard = ({ memo, isAuthor, onOpen, onOpenTag, onEdit, onChangeVi
       {imageUrls.length > 0 ? (
         <div style={styles.previewGrid}>
           {imageUrls.map((url) => (
-            <img key={url} src={url} alt="memo preview" style={styles.previewImage} onClick={() => setLightboxUrl(url)} />
+            <img key={url} src={url} alt="memo preview" loading="lazy" decoding="async" style={styles.previewImage} onClick={() => setLightboxUrl(url)} />
           ))}
         </div>
       ) : null}
-      <div style={styles.footer}>
+      <div style={{ ...styles.footer, borderTopColor: c.border }}>
         <span style={styles.footerText}>字数: {wordCount}</span>
         <span style={styles.footerText}>创建于 {formatTime(memo.createdAt)}</span>
         {memo.updatedAt !== memo.createdAt ? <span style={styles.footerText}>编辑于 {formatTime(memo.updatedAt)}</span> : null}

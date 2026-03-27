@@ -4,21 +4,23 @@ import { HomePage } from './pages/HomePage';
 import { MemoDetailPage } from './pages/MemoDetailPage';
 import { MemoEditPage } from './pages/MemoEditPage';
 import { TagPage } from './pages/TagPage';
-
+import { ThemeProvider } from './lib/theme';
 
 const queryClient = new QueryClient();
 
 export const App = () => {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/memos/:slug" element={<MemoDetailPage />} />
-          <Route path="/memos/:slug/edit" element={<MemoEditPage />} />
-          <Route path="/tags/*" element={<TagPage />} />
-        </Routes>
-      </BrowserRouter>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/memos/:slug" element={<MemoDetailPage />} />
+            <Route path="/memos/:slug/edit" element={<MemoEditPage />} />
+            <Route path="/tags/*" element={<TagPage />} />
+          </Routes>
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 };

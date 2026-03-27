@@ -1,11 +1,15 @@
+import { useTheme, colors } from '../lib/theme';
+
 interface TimelineHeaderProps {
   count: number;
 }
 
 export const TimelineHeader = ({ count }: TimelineHeaderProps) => {
+  const { isDark } = useTheme();
+  const c = colors(isDark);
   return (
     <div style={styles.wrap}>
-      <div style={styles.title}>笔记（{count}）</div>
+      <div style={{ ...styles.title, color: c.textMuted }}>笔记（{count}）</div>
     </div>
   );
 };
@@ -20,6 +24,5 @@ const styles: Record<string, React.CSSProperties> = {
   title: {
     fontSize: 14,
     fontWeight: 600,
-    color: '#999',
   },
 };
