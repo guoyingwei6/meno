@@ -7,6 +7,7 @@ import { TimelineHeader } from '../components/TimelineHeader';
 import type { SortMode } from '../components/TimelineHeader';
 import { TopBar } from '../components/TopBar';
 import { StatsView } from '../components/StatsView';
+import { ImportExportModal } from '../components/ImportExportModal';
 import { createMemo, deleteMemo, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, restoreMemo, updateMemo } from '../lib/api';
 import type { CalendarResponse, DashboardStatsResponse, MeResponse, PublicStatsResponse } from '../lib/api';
 import { buildTagTree } from '../lib/tag-tree';
@@ -38,6 +39,7 @@ export const HomePage = () => {
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [filters, setFilters] = useState<MemoFilters>({});
   const [sortMode, setSortMode] = useState<SortMode>('created-desc');
+  const [showImportExport, setShowImportExport] = useState(false);
 
   // Sync sidebar default when crossing breakpoint
   useEffect(() => {
@@ -212,6 +214,16 @@ export const HomePage = () => {
 
   return (
     <div style={pageStyle}>
+      {showImportExport && (
+        <ImportExportModal
+          onClose={() => setShowImportExport(false)}
+          onImportDone={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['dashboard-memos'] });
+            await queryClient.invalidateQueries({ queryKey: ['dashboard-tags'] });
+            await queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+          }}
+        />
+      )}
       {isMobile && sidebarOpen && (
         <div style={{ ...styles.overlay, background: c.overlay }} onClick={() => setSidebarOpen(false)} />
       )}
@@ -243,6 +255,7 @@ export const HomePage = () => {
           }}
           onToggleSidebar={() => setSidebarOpen((v) => !v)}
           onRefresh={async () => { await queryClient.refetchQueries(); }}
+          onImportExport={() => setShowImportExport(true)}
         />
         {activeView === 'stats' ? (
           <StatsView isAuthor={Boolean(isAuthor)} />

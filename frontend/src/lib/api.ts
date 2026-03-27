@@ -276,3 +276,15 @@ export const deleteMemo = async (id: number): Promise<{ success: boolean }> => {
 
   return response.json();
 };
+
+export const uploadFile = async (file: File): Promise<{ url: string; objectKey: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch(withApiBase('/api/uploads'), {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  });
+  if (!response.ok) throw new Error('Failed to upload file');
+  return response.json();
+};
