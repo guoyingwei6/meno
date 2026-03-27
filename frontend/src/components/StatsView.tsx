@@ -91,7 +91,9 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
     const el = containerRef.current;
     if (!el) return;
     const measure = () => {
-      const available = el.clientWidth - DAY_LABEL_WIDTH - DAY_LABEL_GAP;
+      const cs = getComputedStyle(el);
+      const paddingX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      const available = el.clientWidth - paddingX - DAY_LABEL_WIDTH - DAY_LABEL_GAP;
       const perCol = available / weekCount;
       const gap = Math.max(MIN_GAP, Math.floor(perCol * 0.2));
       const size = Math.floor(perCol - gap);
