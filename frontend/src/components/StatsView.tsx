@@ -15,10 +15,10 @@ const formatBytes = (bytes: number): string => {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 };
 
-const CELL_SIZE = 9;
+const CELL_SIZE = 7;
 const CELL_GAP = 2;
 const DAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
-const MONTH_NAMES = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
 const getHeatmapColor = (count: number, isDark: boolean): string => {
   if (count === 0) return isDark ? '#2d333b' : '#ebedf0';
@@ -90,7 +90,7 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
 
   const { weeks, monthLabels } = buildHeatmapGrid(data.heatmap);
   const gridWidth = weeks.length * (CELL_SIZE + CELL_GAP);
-  const labelWidth = 20;
+  const labelWidth = 16;
 
   const statItems = [
     { value: data.totalMemos.toLocaleString(), label: '笔记' },
@@ -175,7 +175,7 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
                     style={{
                       position: 'absolute',
                       left: ml.index * (CELL_SIZE + CELL_GAP),
-                      fontSize: 11,
+                      fontSize: 9,
                       color: c.textMuted,
                       whiteSpace: 'nowrap',
                     }}
@@ -193,7 +193,7 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
                   key={label}
                   style={{
                     height: CELL_SIZE,
-                    fontSize: 10,
+                    fontSize: 8,
                     color: c.textMuted,
                     lineHeight: `${CELL_SIZE}px`,
                     visibility: i % 2 === 0 ? 'visible' : 'hidden',
