@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import JSZip from 'jszip';
 import { useTheme, colors } from '../lib/theme';
 import { createMemo, fetchDashboardMemos, uploadFile } from '../lib/api';
@@ -81,8 +81,10 @@ export const ImportExportModal = ({ onClose, onImportDone }: ImportExportModalPr
   const [tab, setTab] = useState<'import' | 'export'>('import');
 
   // Import state
-  const dirInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const mdInputRef = useRef<HTMLInputElement>(null);
+  const imgInputRef = useRef<HTMLInputElement>(null);
+  const [mdFiles, setMdFiles] = useState<File[]>([]);
+  const [imgMap, setImgMap] = useState<Map<string, File>>(new Map());
   const [visibility, setVisibility] = useState<MemoVisibility>('private');
   const [importing, setImporting] = useState(false);
   const [importLog, setImportLog] = useState<string[]>([]);
@@ -92,23 +94,8 @@ export const ImportExportModal = ({ onClose, onImportDone }: ImportExportModalPr
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState('');
 
-  // Set webkitdirectory attribute (not in React's type defs)
-  useEffect(() => {
-    if (dirInputRef.current) {
-      dirInputRef.current.setAttribute('webkitdirectory', '');
-      dirInputRef.current.setAttribute('multiple', '');
-    }
-  }, []);
 
   const addLog = (msg: string) => setImportLog((prev) => [...prev, msg]);
-
-  // Derived file lists from selected directory
-  const mdFiles = selectedFiles.filter((f) => f.name.endsWith('.md'));
-  const imgMap = new Map<string, File>(
-    selectedFiles
-      .filter((f) => !f.name.endsWith('.md') && f.webkitRelativePath.includes('/images/'))
-      .map((f) => [f.name, f]),
-  );
 
   // ── Import ──────────────────────────────────────────────────────
 
@@ -264,25 +251,38 @@ export const ImportExportModal = ({ onClose, onImportDone }: ImportExportModalPr
         {/* ── Import Tab ── */}
         {tab === 'import' && (
           <>
-            <p style={{ margin: 0, fontSize: 13, color: c.textSecondary, lineHeight: 1.6 }}>
-              选择 flomo 导出目录（包含 .md 文件和 <code>images/</code> 子目录），图片会自动识别并上传。
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {/* MD file picker */}
               <input
-                ref={dirInputRef}
+                ref={mdInputRef}
                 type="file"
+                accept=".md"
+                multiple
                 style={{ display: 'none' }}
                 onChange={(e) => {
-                  setSelectedFiles(Array.from(e.target.files ?? []));
+                  setMdFiles(Array.from(e.target.files ?? []));
                   setImportLog([]);
                   setImportDone(false);
                 }}
               />
-              <button type="button" style={btn()} onClick={() => dirInputRef.current?.click()}>
-                {selectedFiles.length > 0
-                  ? `已选择目录：${mdFiles.length} 篇笔记，${imgMap.size} 张图片`
-                  : '选择导出目录…'}
+              <button type="button" style={btn()} onClick={() => mdInputRef.current?.click()}>
+                {mdFiles.length > 0 ? `已选 ${mdFiles.length} 篇笔记` : '① 选择 .md 文件（可多选）'}
+              </button>
+
+              {/* Image file picker */}
+              <input
+                ref={imgInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  setImgMap(new Map(files.map((f) => [f.name, f])));
+                }}
+              />
+              <button type="button" style={{ ...btn(), fontSize: 12 }} onClick={() => imgInputRef.current?.click()}>
+                {imgMap.size > 0 ? `已选 ${imgMap.size} 张图片` : '② 选择图片文件（可选，images/ 目录下）'}
               </button>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: c.textSecondary }}>
