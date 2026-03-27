@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { getAuthorMemoBySlug, getDashboardStats, listAuthorDateCounts, listAuthorMemos, listAuthorTagCounts } from '../db/memo-repository';
+import { getAuthorMemoBySlug, getDashboardStats, getRecordStats, listAuthorDateCounts, listAuthorMemos, listAuthorTagCounts } from '../db/memo-repository';
 import type { WorkerBindings } from '../db/client';
 import { isAuthorSession } from '../lib/auth';
 import { parseTags } from '../lib/tag-parser';
@@ -16,6 +16,10 @@ dashboardRoutes.use('*', async (c, next) => {
 
 dashboardRoutes.get('/stats', async (c) => {
   return c.json({ stats: await getDashboardStats(c.env.DB) });
+});
+
+dashboardRoutes.get('/record-stats', async (c) => {
+  return c.json(await getRecordStats(c.env.DB, true));
 });
 
 dashboardRoutes.get('/memos', async (c) => {

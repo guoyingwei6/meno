@@ -6,6 +6,7 @@ import { SidebarShell } from '../components/SidebarShell';
 import { TimelineHeader } from '../components/TimelineHeader';
 import type { SortMode } from '../components/TimelineHeader';
 import { TopBar } from '../components/TopBar';
+import { StatsView } from '../components/StatsView';
 import { createMemo, deleteMemo, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, restoreMemo, updateMemo } from '../lib/api';
 import type { CalendarResponse, DashboardStatsResponse, MeResponse, PublicStatsResponse } from '../lib/api';
 import { buildTagTree } from '../lib/tag-tree';
@@ -32,7 +33,7 @@ export const HomePage = () => {
   const c = colors(isDark);
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview'>('all');
+  const [activeView, setActiveView] = useState<'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats'>('all');
   const [reviewSeed, setReviewSeed] = useState(0);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [filters, setFilters] = useState<MemoFilters>({});
@@ -55,7 +56,7 @@ export const HomePage = () => {
     closeSidebarOnMobile();
   };
 
-  const handleSelectView = (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview') => {
+  const handleSelectView = (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats') => {
     if (view === 'dailyReview') setReviewSeed((s) => s + 1);
     setActiveView(view);
     setSelectedDate(null);
@@ -78,7 +79,7 @@ export const HomePage = () => {
 
   const isAuthor = me?.authenticated && me.role === 'author';
 
-  const apiView = (activeView === 'onThisDay' || activeView === 'dailyReview') ? 'all' : activeView === 'all' ? 'public' : activeView;
+  const apiView = activeView === 'private' ? 'private' : activeView === 'trash' ? 'trash' : 'public';
 
   const { data, isLoading } = useQuery<PublicMemosResponse | { memos: PublicMemosResponse['memos'] }>({
     queryKey: isAuthor ? ['dashboard-memos', apiView, selectedDate] : ['public-memos', selectedDate],
@@ -243,36 +244,42 @@ export const HomePage = () => {
           onToggleSidebar={() => setSidebarOpen((v) => !v)}
           onRefresh={async () => { await queryClient.refetchQueries(); }}
         />
-        {isAuthor ? <MemoComposer defaultDisplayDate={todayStr} onSubmit={async (input) => {
-          await createMemoMutation.mutateAsync(input);
-        }} /> : <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后发布 memo</div>}
-        {activeView === 'trash' && !isAuthor && (
-          <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后查看已删除的笔记</div>
+        {activeView === 'stats' ? (
+          <StatsView isAuthor={Boolean(isAuthor)} />
+        ) : (
+          <>
+            {isAuthor ? <MemoComposer defaultDisplayDate={todayStr} onSubmit={async (input) => {
+              await createMemoMutation.mutateAsync(input);
+            }} /> : <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后发布 memo</div>}
+            {activeView === 'trash' && !isAuthor && (
+              <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后查看已删除的笔记</div>
+            )}
+            {activeView === 'private' && !isAuthor && (
+              <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后查看私密笔记</div>
+            )}
+            {activeView === 'trash' && isAuthor && (
+              <div style={{ ...styles.trashNotice, color: c.textMuted }}>回收站内的笔记仅保留 30 天</div>
+            )}
+            <TimelineHeader count={memos.length} sortMode={sortMode} onSortChange={setSortMode} />
+            <MemoTimeline
+              memos={memos}
+              isAuthor={Boolean(isAuthor)}
+              isTrash={activeView === 'trash'}
+              onOpenMemo={(memo) => window.location.assign(`/memos/${memo.slug}`)}
+              onOpenTag={(tag) => window.location.assign(`/tags/${tag}`)}
+              onEditMemo={(memo) => window.location.assign(`/memos/${memo.slug}/edit`)}
+              onRestoreMemo={(memo) => {
+                restoreMemoMutation.mutate(memo.id);
+              }}
+              onDeleteMemo={(memo) => {
+                deleteMemoMutation.mutate(memo.id);
+              }}
+              onChangeVisibility={(memo, visibility) => {
+                updateMemoMutation.mutate({ id: memo.id, input: { visibility } });
+              }}
+            />
+          </>
         )}
-        {activeView === 'private' && !isAuthor && (
-          <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后查看私密笔记</div>
-        )}
-        {activeView === 'trash' && isAuthor && (
-          <div style={{ ...styles.trashNotice, color: c.textMuted }}>回收站内的笔记仅保留 30 天</div>
-        )}
-        <TimelineHeader count={memos.length} sortMode={sortMode} onSortChange={setSortMode} />
-        <MemoTimeline
-          memos={memos}
-          isAuthor={Boolean(isAuthor)}
-          isTrash={activeView === 'trash'}
-          onOpenMemo={(memo) => window.location.assign(`/memos/${memo.slug}`)}
-          onOpenTag={(tag) => window.location.assign(`/tags/${tag}`)}
-          onEditMemo={(memo) => window.location.assign(`/memos/${memo.slug}/edit`)}
-          onRestoreMemo={(memo) => {
-            restoreMemoMutation.mutate(memo.id);
-          }}
-          onDeleteMemo={(memo) => {
-            deleteMemoMutation.mutate(memo.id);
-          }}
-          onChangeVisibility={(memo, visibility) => {
-            updateMemoMutation.mutate({ id: memo.id, input: { visibility } });
-          }}
-        />
       </main>
     </div>
   );

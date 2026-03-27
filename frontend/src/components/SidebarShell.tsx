@@ -19,12 +19,12 @@ interface SidebarShellProps {
   streakDays?: number;
   activeDate?: string | null;
   calendarDays?: DateCount[];
-  activeView?: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview';
+  activeView?: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats';
   activeTag?: string | null;
   filters?: MemoFilters;
   tagTree?: TagTreeResult;
   style?: React.CSSProperties;
-  onSelectView?: (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview') => void;
+  onSelectView?: (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats') => void;
   onSelectDate?: (date: string) => void;
   onSelectTag?: (tag: string | null) => void;
   onChangeFilters?: (filters: MemoFilters) => void;
@@ -114,9 +114,9 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
           <h1 style={styles.brand}>Meno</h1>
         </div>
         <div style={styles.statsGrid}>
-          <div><div style={styles.statNumber}>{memoCount}</div><div style={styles.statLabel}>笔记</div></div>
-          <div><div style={styles.statNumber}>{tagCount}</div><div style={styles.statLabel}>标签</div></div>
-          <div><div style={styles.statNumber}>{streakDays}</div><div style={styles.statLabel}>天</div></div>
+          <button type="button" style={styles.statButton} onClick={() => onSelectView?.('stats')}><div style={styles.statNumber}>{memoCount}</div><div style={styles.statLabel}>笔记</div></button>
+          <button type="button" style={styles.statButton} onClick={() => onSelectView?.('stats')}><div style={styles.statNumber}>{tagCount}</div><div style={styles.statLabel}>标签</div></button>
+          <button type="button" style={styles.statButton} onClick={() => onSelectView?.('stats')}><div style={styles.statNumber}>{streakDays}</div><div style={styles.statLabel}>天</div></button>
         </div>
       </div>
 
@@ -195,6 +195,10 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
         <div style={styles.navRow}>
           <span style={styles.iconCellStatic}>🔒</span>
           <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'private' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('private')}>私密笔记</button>
+        </div>
+        <div style={styles.navRow}>
+          <span style={styles.iconCellStatic}>📊</span>
+          <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'stats' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('stats')}>记录统计</button>
         </div>
       </nav>
 
@@ -295,6 +299,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, 1fr)',
     gap: 8,
+  },
+  statButton: {
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    padding: 0,
+    textAlign: 'left',
   },
   statNumber: {
     fontSize: 24,

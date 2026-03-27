@@ -226,6 +226,63 @@ export const purgeOldTrash = async (db: D1Database, r2: R2Bucket): Promise<numbe
   return results.length;
 };
 
+const countChars = (content: string): number => {
+  return content
+    .replace(/!\[.*?\]\(.*?\)/g, '')
+    .replace(/[#*_~`>\-\[\]()]/g, '')
+    .trim()
+    .length;
+};
+
+export const getRecordStats = async (db: D1Database, _authorMode: boolean) => {
+  const vis = "visibility = 'public' AND deleted_at IS NULL";
+
+  const totalRow = await db.prepare(`SELECT COUNT(*) as c FROM memos WHERE ${vis}`).first<{ c: number }>();
+  const activeDaysRow = await db.prepare(`SELECT COUNT(DISTINCT display_date) as c FROM memos WHERE ${vis}`).first<{ c: number }>();
+  const maxDailyMemosRow = await db.prepare(
+    `SELECT MAX(cnt) as c FROM (SELECT COUNT(*) as cnt FROM memos WHERE ${vis} GROUP BY display_date)`,
+  ).first<{ c: number }>();
+
+  const { results: contentRows } = await db.prepare(
+    `SELECT content, display_date FROM memos WHERE ${vis}`,
+  ).all();
+
+  let totalWords = 0;
+  const dailyWords = new Map<string, number>();
+  for (const row of contentRows ?? []) {
+    const wc = countChars(String((row as Record<string, unknown>).content));
+    const date = String((row as Record<string, unknown>).display_date);
+    totalWords += wc;
+    dailyWords.set(date, (dailyWords.get(date) ?? 0) + wc);
+  }
+  const maxDailyWords = dailyWords.size > 0 ? Math.max(...dailyWords.values()) : 0;
+
+  const oneYearAgo = new Date();
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+  const heatmapStart = oneYearAgo.toISOString().slice(0, 10);
+
+  const { results: heatmapRows } = await db.prepare(
+    `SELECT display_date as date, COUNT(*) as count FROM memos WHERE ${vis} AND display_date >= ? GROUP BY display_date ORDER BY display_date`,
+  ).bind(heatmapStart).all();
+
+  const heatmap = (heatmapRows ?? []).map((row) => ({
+    date: String((row as Record<string, unknown>).date),
+    count: Number((row as Record<string, unknown>).count),
+  }));
+
+  const yearMemos = heatmap.reduce((sum, d) => sum + d.count, 0);
+
+  return {
+    totalMemos: totalRow?.c ?? 0,
+    totalWords,
+    maxDailyMemos: maxDailyMemosRow?.c ?? 0,
+    maxDailyWords,
+    activeDays: activeDaysRow?.c ?? 0,
+    yearMemos,
+    heatmap,
+  };
+};
+
 export const listPublicTagCounts = async (db: D1Database): Promise<Array<{ tag: string; count: number }>> => {
   const { results } = await db
     .prepare(

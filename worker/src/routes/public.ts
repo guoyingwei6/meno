@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { getPublicStats, listPublicDateCounts, getPublicMemoBySlug, listPublicMemos, listPublicTagCounts } from '../db/memo-repository';
+import { getPublicStats, getRecordStats, listPublicDateCounts, getPublicMemoBySlug, listPublicMemos, listPublicTagCounts } from '../db/memo-repository';
 import type { WorkerBindings } from '../db/client';
 
 export const publicRoutes = new Hono<{ Bindings: WorkerBindings }>();
@@ -37,4 +37,8 @@ publicRoutes.get('/heatmap', async (c) => {
 
 publicRoutes.get('/stats', async (c) => {
   return c.json({ stats: await getPublicStats(c.env.DB) });
+});
+
+publicRoutes.get('/record-stats', async (c) => {
+  return c.json(await getRecordStats(c.env.DB, false));
 });

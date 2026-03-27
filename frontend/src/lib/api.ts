@@ -177,6 +177,28 @@ export const fetchDashboardStats = async (): Promise<DashboardStatsResponse> => 
   return response.json();
 };
 
+export interface RecordStatsResponse {
+  totalMemos: number;
+  totalWords: number;
+  maxDailyMemos: number;
+  maxDailyWords: number;
+  activeDays: number;
+  yearMemos: number;
+  heatmap: { date: string; count: number }[];
+}
+
+export const fetchPublicRecordStats = async (): Promise<RecordStatsResponse> => {
+  const response = await fetch(withApiBase('/api/public/record-stats'));
+  if (!response.ok) throw new Error('Failed to fetch public record stats');
+  return response.json();
+};
+
+export const fetchDashboardRecordStats = async (): Promise<RecordStatsResponse> => {
+  const response = await fetch(withApiBase('/api/dashboard/record-stats'), { credentials: 'include' });
+  if (!response.ok) throw new Error('Failed to fetch dashboard record stats');
+  return response.json();
+};
+
 export const logout = async (): Promise<void> => {
   const response = await fetch(withApiBase('/api/auth/logout'), {
     method: 'POST',
