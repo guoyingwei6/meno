@@ -7,8 +7,16 @@ interface StatsViewProps {
   isAuthor: boolean;
 }
 
-const CELL_SIZE = 12;
-const CELL_GAP = 3;
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+};
+
+const CELL_SIZE = 9;
+const CELL_GAP = 2;
 const DAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 const MONTH_NAMES = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
 
@@ -82,14 +90,19 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
 
   const { weeks, monthLabels } = buildHeatmapGrid(data.heatmap);
   const gridWidth = weeks.length * (CELL_SIZE + CELL_GAP);
-  const labelWidth = 28;
+  const labelWidth = 20;
 
   const statItems = [
-    { value: data.totalMemos, label: '笔记' },
-    { value: data.totalWords, label: '字数' },
-    { value: data.maxDailyMemos, label: '单日最多条数' },
-    { value: data.maxDailyWords, label: '单日最多字数' },
-    { value: data.activeDays, label: '坚持记录天数' },
+    { value: data.totalMemos.toLocaleString(), label: '笔记' },
+    { value: data.totalWords.toLocaleString(), label: '字数' },
+    { value: data.maxDailyMemos.toLocaleString(), label: '单日最多条数' },
+    { value: data.maxDailyWords.toLocaleString(), label: '单日最多字数' },
+    { value: data.activeDays.toLocaleString(), label: '坚持记录天数' },
+  ];
+
+  const storageItems = [
+    { value: data.imageCount.toLocaleString(), label: '图片数量' },
+    { value: formatBytes(data.totalStorageBytes), label: '存储占用' },
   ];
 
   return (
@@ -100,12 +113,26 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
         <div style={styles.statsGrid}>
           {statItems.map((item) => (
             <div key={item.label}>
-              <div style={{ fontSize: 28, fontWeight: 800, color: c.textPrimary }}>{item.value.toLocaleString()}</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: c.textPrimary }}>{item.value}</div>
               <div style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{item.label}</div>
             </div>
           ))}
         </div>
       </div>
+
+      {isAuthor && (
+        <div style={{ ...styles.statsCard, background: c.cardBg, borderColor: c.border }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: c.textPrimary, marginBottom: 12 }}>图片存储</div>
+          <div style={styles.statsGrid}>
+            {storageItems.map((item) => (
+              <div key={item.label}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: c.textPrimary }}>{item.value}</div>
+                <div style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>{item.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ ...styles.heatmapCard, background: c.cardBg, borderColor: c.border }}>
         <div style={{ fontSize: 15, fontWeight: 600, color: c.textPrimary, marginBottom: 16 }}>

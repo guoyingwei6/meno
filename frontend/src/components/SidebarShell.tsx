@@ -306,6 +306,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     padding: 0,
     textAlign: 'left',
+    color: 'inherit',
   },
   statNumber: {
     fontSize: 24,

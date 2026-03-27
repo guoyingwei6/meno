@@ -40,5 +40,6 @@ publicRoutes.get('/stats', async (c) => {
 });
 
 publicRoutes.get('/record-stats', async (c) => {
-  return c.json(await getRecordStats(c.env.DB, false));
+  const stats = await getRecordStats(c.env.DB, false);
+  return c.json({ ...stats, totalStorageBytes: 0, imageCount: 0 });
 });

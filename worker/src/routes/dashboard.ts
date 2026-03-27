@@ -19,7 +19,21 @@ dashboardRoutes.get('/stats', async (c) => {
 });
 
 dashboardRoutes.get('/record-stats', async (c) => {
-  return c.json(await getRecordStats(c.env.DB, true));
+  const stats = await getRecordStats(c.env.DB, true);
+
+  let totalStorageBytes = 0;
+  let imageCount = 0;
+  let cursor: string | undefined;
+  do {
+    const list = await c.env.ASSETS.list({ limit: 1000, cursor });
+    for (const obj of list.objects) {
+      totalStorageBytes += obj.size;
+      imageCount++;
+    }
+    cursor = list.truncated ? (list as { cursor?: string }).cursor : undefined;
+  } while (cursor);
+
+  return c.json({ ...stats, totalStorageBytes, imageCount });
 });
 
 dashboardRoutes.get('/memos', async (c) => {

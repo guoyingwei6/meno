@@ -184,6 +184,8 @@ export interface RecordStatsResponse {
   maxDailyWords: number;
   activeDays: number;
   yearMemos: number;
+  totalStorageBytes: number;
+  imageCount: number;
   heatmap: { date: string; count: number }[];
 }
 
