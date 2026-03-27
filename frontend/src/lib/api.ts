@@ -227,6 +227,19 @@ export const createMemo = async (input: {
   return response.json();
 };
 
+export const restoreMemo = async (id: number): Promise<{ memo: MemoDetail }> => {
+  const response = await fetch(withApiBase(`/api/memos/${id}/restore`), {
+    method: 'POST',
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to restore memo');
+  }
+
+  return response.json();
+};
+
 export const deleteMemo = async (id: number): Promise<{ success: boolean }> => {
   const response = await fetch(withApiBase(`/api/memos/${id}`), {
     method: 'DELETE',

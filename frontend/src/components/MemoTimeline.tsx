@@ -7,14 +7,16 @@ const PAGE_SIZE = 20;
 interface MemoTimelineProps {
   memos: MemoSummary[];
   isAuthor?: boolean;
+  isTrash?: boolean;
   onOpenMemo?: (memo: MemoSummary) => void;
   onOpenTag?: (tag: string) => void;
   onEditMemo?: (memo: MemoSummary) => void;
+  onRestoreMemo?: (memo: MemoSummary) => void;
   onChangeVisibility?: (memo: MemoSummary, visibility: 'public' | 'private') => void;
   onDeleteMemo?: (memo: MemoSummary) => void;
 }
 
-export const MemoTimeline = ({ memos, isAuthor, onOpenMemo, onOpenTag, onEditMemo, onChangeVisibility, onDeleteMemo }: MemoTimelineProps) => {
+export const MemoTimeline = ({ memos, isAuthor, isTrash, onOpenMemo, onOpenTag, onEditMemo, onRestoreMemo, onChangeVisibility, onDeleteMemo }: MemoTimelineProps) => {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -44,7 +46,7 @@ export const MemoTimeline = ({ memos, isAuthor, onOpenMemo, onOpenTag, onEditMem
   return (
     <section style={styles.timeline}>
       {visible.map((memo) => (
-        <MemoCard key={memo.id} memo={memo} isAuthor={isAuthor} onOpen={onOpenMemo} onOpenTag={onOpenTag} onEdit={onEditMemo} onChangeVisibility={onChangeVisibility} onDelete={onDeleteMemo} />
+        <MemoCard key={memo.id} memo={memo} isAuthor={isAuthor} isTrash={isTrash} onOpen={onOpenMemo} onOpenTag={onOpenTag} onEdit={onEditMemo} onRestore={onRestoreMemo} onChangeVisibility={onChangeVisibility} onDelete={onDeleteMemo} />
       ))}
       {visibleCount < memos.length && <div ref={sentinelRef} style={styles.sentinel} />}
     </section>

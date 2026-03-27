@@ -5,7 +5,7 @@ import { MemoTimeline } from '../components/MemoTimeline';
 import { SidebarShell } from '../components/SidebarShell';
 import { TimelineHeader } from '../components/TimelineHeader';
 import { TopBar } from '../components/TopBar';
-import { createMemo, deleteMemo, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, updateMemo } from '../lib/api';
+import { createMemo, deleteMemo, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, restoreMemo, updateMemo } from '../lib/api';
 import type { CalendarResponse, DashboardStatsResponse, MeResponse, PublicStatsResponse } from '../lib/api';
 import { buildTagTree } from '../lib/tag-tree';
 import type { MemoFilters } from '../components/SidebarShell';
@@ -142,6 +142,15 @@ export const HomePage = () => {
     },
   });
 
+  const restoreMemoMutation = useMutation({
+    mutationFn: (id: number) => restoreMemo(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-memos'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-tags'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    },
+  });
+
   const todayMonthDay = new Date().toISOString().slice(5, 10);
   const todayYear = new Date().getFullYear().toString();
 
@@ -231,9 +240,13 @@ export const HomePage = () => {
         <MemoTimeline
           memos={memos}
           isAuthor={Boolean(isAuthor)}
+          isTrash={activeView === 'trash'}
           onOpenMemo={(memo) => window.location.assign(`/memos/${memo.slug}`)}
           onOpenTag={(tag) => window.location.assign(`/tags/${tag}`)}
           onEditMemo={(memo) => window.location.assign(`/memos/${memo.slug}/edit`)}
+          onRestoreMemo={(memo) => {
+            restoreMemoMutation.mutate(memo.id);
+          }}
           onDeleteMemo={(memo) => {
             deleteMemoMutation.mutate(memo.id);
           }}

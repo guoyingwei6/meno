@@ -8,9 +8,11 @@ import { useTheme, colors } from '../lib/theme';
 interface MemoCardProps {
   memo: MemoSummary;
   isAuthor?: boolean;
+  isTrash?: boolean;
   onOpen?: (memo: MemoSummary) => void;
   onOpenTag?: (tag: string) => void;
   onEdit?: (memo: MemoSummary) => void;
+  onRestore?: (memo: MemoSummary) => void;
   onChangeVisibility?: (memo: MemoSummary, visibility: 'public' | 'private') => void;
   onDelete?: (memo: MemoSummary) => void;
 }
@@ -25,7 +27,7 @@ const countWords = (text: string) => {
   return cleaned.length;
 };
 
-export const MemoCard = ({ memo, isAuthor, onOpen, onOpenTag, onEdit, onChangeVisibility, onDelete }: MemoCardProps) => {
+export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, onRestore, onChangeVisibility, onDelete }: MemoCardProps) => {
   const { isDark } = useTheme();
   const c = colors(isDark);
   const [expanded, setExpanded] = useState(false);
@@ -64,7 +66,9 @@ export const MemoCard = ({ memo, isAuthor, onOpen, onOpenTag, onEdit, onChangeVi
               <div style={{ ...styles.menuDropdown, background: c.cardBg, borderColor: c.border }}>
                 <button type="button" style={styles.menuItem} aria-label="查看详情" onClick={() => { setMenuOpen(false); onOpen?.(memo); }}>查看详情</button>
                 <button type="button" style={styles.menuItem} aria-label="分享" onClick={handleShare}>分享链接</button>
-                {isAuthor ? (
+                {isAuthor && isTrash ? (
+                  <button type="button" style={styles.menuItem} aria-label="恢复" onClick={() => { setMenuOpen(false); onRestore?.(memo); }}>恢复</button>
+                ) : isAuthor ? (
                   <>
                     <button type="button" style={styles.menuItem} aria-label="编辑" onClick={() => { setMenuOpen(false); onEdit?.(memo); }}>编辑</button>
                     {memo.visibility === 'public' ? (
