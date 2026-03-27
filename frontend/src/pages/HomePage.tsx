@@ -9,6 +9,7 @@ import { createMemo, deleteMemo, fetchDashboardCalendar, fetchDashboardMemos, fe
 import type { CalendarResponse, DashboardStatsResponse, MeResponse, PublicStatsResponse } from '../lib/api';
 import { buildTagTree } from '../lib/tag-tree';
 import type { MemoFilters } from '../components/SidebarShell';
+import { useTheme, colors } from '../lib/theme';
 import type { PublicMemosResponse } from '../types/shared';
 
 const MOBILE_BREAKPOINT = 768;
@@ -26,9 +27,12 @@ const useIsMobile = () => {
 export const HomePage = () => {
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
+  const { isDark } = useTheme();
+  const c = colors(isDark);
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<'all' | 'trash' | 'onThisDay'>('all');
+  const [activeView, setActiveView] = useState<'all' | 'trash' | 'onThisDay' | 'dailyReview'>('all');
+  const [reviewSeed, setReviewSeed] = useState(0);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [filters, setFilters] = useState<MemoFilters>({});
 
@@ -49,11 +53,12 @@ export const HomePage = () => {
     closeSidebarOnMobile();
   };
 
-  const handleSelectView = (view: 'all' | 'trash' | 'onThisDay') => {
+  const handleSelectView = (view: 'all' | 'trash' | 'onThisDay' | 'dailyReview') => {
+    if (view === 'dailyReview') setReviewSeed((s) => s + 1);
     setActiveView(view);
     setSelectedDate(null);
     setActiveTag(null);
-    if (view !== 'all') setFilters({});
+    setFilters({});
     closeSidebarOnMobile();
   };
 
@@ -71,7 +76,7 @@ export const HomePage = () => {
 
   const isAuthor = me?.authenticated && me.role === 'author';
 
-  const apiView = activeView === 'onThisDay' ? 'all' : activeView === 'all' && filters.visibility ? filters.visibility : activeView;
+  const apiView = (activeView === 'onThisDay' || activeView === 'dailyReview') ? 'all' : activeView === 'all' && filters.visibility ? filters.visibility : activeView;
 
   const { data, isLoading } = useQuery<PublicMemosResponse | { memos: PublicMemosResponse['memos'] }>({
     queryKey: isAuthor ? ['dashboard-memos', apiView, selectedDate] : ['public-memos', selectedDate],
@@ -149,6 +154,10 @@ export const HomePage = () => {
         return md === todayMonthDay && yr !== todayYear;
       });
     }
+    if (activeView === 'dailyReview') {
+      const shuffled = [...all].sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, 3);
+    }
     if (filters.hasTags === true) all = all.filter((m) => m.tags.length > 0);
     if (filters.hasTags === false) all = all.filter((m) => m.tags.length === 0);
     if (filters.hasImages === true) all = all.filter((m) => m.hasImages);
@@ -157,7 +166,8 @@ export const HomePage = () => {
       all = all.filter((m) => m.tags.some((t) => t === activeTag || t.startsWith(`${activeTag}/`)));
     }
     return all;
-  }, [data, activeTag, activeView, filters, todayMonthDay, todayYear]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, activeTag, activeView, filters, todayMonthDay, todayYear, reviewSeed]);
 
   if (isLoading || isLoadingMe) {
     return <div style={styles.loading}>Loading...</div>;
@@ -167,14 +177,16 @@ export const HomePage = () => {
   const tagTree = buildTagTree(allTags);
   const todayStr = new Date().toISOString().slice(0, 10);
 
+  const pageStyle: React.CSSProperties = { ...styles.page, background: c.pageBg, color: c.textPrimary };
+  const sidebarMobileOpen: React.CSSProperties = { ...styles.sidebarMobileOpen, background: c.sidebarBg };
   const sidebarStyle: React.CSSProperties = isMobile
-    ? { ...styles.sidebar, ...(sidebarOpen ? styles.sidebarMobileOpen : styles.sidebarMobileClosed) }
+    ? { ...styles.sidebar, ...(sidebarOpen ? sidebarMobileOpen : styles.sidebarMobileClosed) }
     : { ...styles.sidebar, ...(sidebarOpen ? {} : { display: 'none' }) };
 
   return (
-    <div style={styles.page}>
+    <div style={pageStyle}>
       {isMobile && sidebarOpen && (
-        <div style={styles.overlay} onClick={() => setSidebarOpen(false)} />
+        <div style={{ ...styles.overlay, background: c.overlay }} onClick={() => setSidebarOpen(false)} />
       )}
       <div style={sidebarStyle}>
         <SidebarShell
@@ -187,6 +199,7 @@ export const HomePage = () => {
           activeTag={activeTag}
           filters={filters}
           tagTree={tagTree}
+          style={isMobile ? { minHeight: 0, flex: '1 1 0', overflowY: 'auto' as const } : undefined}
           onSelectView={handleSelectView}
           onSelectDate={handleSelectDate}
           onSelectTag={handleSelectTag}
@@ -206,7 +219,7 @@ export const HomePage = () => {
         />
         {isAuthor ? <MemoComposer defaultDisplayDate={todayStr} onSubmit={async (input) => {
           await createMemoMutation.mutateAsync(input);
-        }} /> : <div style={styles.loginHint}>登录后发布 memo</div>}
+        }} /> : <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后发布 memo</div>}
         <TimelineHeader count={memos.length} />
         <MemoTimeline
           memos={memos}
@@ -248,7 +261,8 @@ const styles: Record<string, React.CSSProperties> = {
     width: '80%',
     maxWidth: 320,
     background: '#fbfbfb',
-    overflowY: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
     boxShadow: '4px 0 16px rgba(0,0,0,0.1)',
   },
   sidebarMobileClosed: {

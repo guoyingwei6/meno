@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { TagTreeResult } from '../lib/tag-tree';
+import { useTheme, colors } from '../lib/theme';
 
 interface DateCount {
   date: string;
@@ -18,11 +19,12 @@ interface SidebarShellProps {
   streakDays?: number;
   activeDate?: string | null;
   calendarDays?: DateCount[];
-  activeView?: 'all' | 'trash' | 'onThisDay';
+  activeView?: 'all' | 'trash' | 'onThisDay' | 'dailyReview';
   activeTag?: string | null;
   filters?: MemoFilters;
   tagTree?: TagTreeResult;
-  onSelectView?: (view: 'all' | 'trash' | 'onThisDay') => void;
+  style?: React.CSSProperties;
+  onSelectView?: (view: 'all' | 'trash' | 'onThisDay' | 'dailyReview') => void;
   onSelectDate?: (date: string) => void;
   onSelectTag?: (tag: string | null) => void;
   onChangeFilters?: (filters: MemoFilters) => void;
@@ -50,7 +52,9 @@ const IconCell = ({ icon, expanded, onToggle }: { icon: string; expanded: boolea
 const getMonthDays = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
 const getFirstDayOfWeek = (year: number, month: number) => new Date(year, month, 1).getDay();
 
-export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate = null, calendarDays = [], activeView = 'all', activeTag = null, filters = {}, tagTree = { groups: [], flat: [] }, onSelectView, onSelectDate, onSelectTag, onChangeFilters }: SidebarShellProps) => {
+export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate = null, calendarDays = [], activeView = 'all', activeTag = null, filters = {}, tagTree = { groups: [], flat: [] }, style, onSelectView, onSelectDate, onSelectTag, onChangeFilters }: SidebarShellProps) => {
+  const { isDark } = useTheme();
+  const c = colors(isDark);
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -104,7 +108,7 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
   const imgLabel = filters.hasImages === true ? '有图片' : filters.hasImages === false ? '无图片' : '有/无图片';
 
   return (
-    <aside style={styles.sidebar}>
+    <aside style={{ ...styles.sidebar, background: c.sidebarBg, borderRightColor: c.border, color: c.textPrimary, ...style }}>
       <div>
         <div style={styles.brandRow}>
           <h1 style={styles.brand}>Meno</h1>
@@ -138,13 +142,13 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
             const count = countMap.get(date) ?? 0;
             const isToday = date === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-            let bg = '#fff';
-            if (isActive) bg = '#31d266';
-            else if (count >= 3) bg = '#6ee09a';
-            else if (count >= 2) bg = '#a3ebc0';
-            else if (count >= 1) bg = '#d4f5e0';
+            let bg = isDark ? '#333' : '#fff';
+            if (isActive) bg = c.accent;
+            else if (count >= 3) bg = isDark ? '#2a6e3a' : '#6ee09a';
+            else if (count >= 2) bg = isDark ? '#245a30' : '#a3ebc0';
+            else if (count >= 1) bg = c.accentLight;
 
-            const color = isActive ? '#fff' : count > 0 ? '#1a7a3a' : '#444';
+            const color = isActive ? '#fff' : count > 0 ? (isDark ? '#8fd6a5' : '#1a7a3a') : c.textSecondary;
             const fontWeight = isActive || count > 0 || isToday ? 700 : 400;
 
             return (
@@ -172,18 +176,22 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
       <nav style={styles.nav}>
         <div style={styles.navRow}>
           <IconCell icon="📋" expanded={notesExpanded} onToggle={() => setNotesExpanded((v) => !v)} />
-          <button type="button" style={{ ...styles.navButton, ...(isNotesActive ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('all')}>全部笔记</button>
+          <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(isNotesActive ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('all')}>全部笔记</button>
         </div>
         {notesExpanded && (
           <div style={styles.navSubItems}>
-            <button type="button" style={{ ...styles.filterChip, ...(filters.visibility != null ? styles.filterChipActive : {}) }} onClick={toggleVisibility}>{visLabel}</button>
-            <button type="button" style={{ ...styles.filterChip, ...(filters.hasTags != null ? styles.filterChipActive : {}) }} onClick={toggleTags}>{tagFilterLabel}</button>
-            <button type="button" style={{ ...styles.filterChip, ...(filters.hasImages != null ? styles.filterChipActive : {}) }} onClick={toggleImages}>{imgLabel}</button>
+            <button type="button" style={{ ...styles.filterChip, color: c.textSecondary, ...(filters.visibility != null ? styles.filterChipActive : {}) }} onClick={toggleVisibility}>{visLabel}</button>
+            <button type="button" style={{ ...styles.filterChip, color: c.textSecondary, ...(filters.hasTags != null ? styles.filterChipActive : {}) }} onClick={toggleTags}>{tagFilterLabel}</button>
+            <button type="button" style={{ ...styles.filterChip, color: c.textSecondary, ...(filters.hasImages != null ? styles.filterChipActive : {}) }} onClick={toggleImages}>{imgLabel}</button>
           </div>
         )}
         <div style={styles.navRow}>
           <span style={styles.iconCellStatic}>✨</span>
-          <button type="button" style={{ ...styles.navButton, ...(activeView === 'onThisDay' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('onThisDay')}>那年今日</button>
+          <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'onThisDay' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('onThisDay')}>那年今日</button>
+        </div>
+        <div style={styles.navRow}>
+          <span style={styles.iconCellStatic}>🎲</span>
+          <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'dailyReview' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('dailyReview')}>每日回顾</button>
         </div>
       </nav>
 
@@ -239,7 +247,7 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
       <div style={styles.trashWrap}>
         <div style={styles.navRow}>
           <span style={styles.iconCellStatic}>🗑️</span>
-          <button type="button" style={{ ...styles.navButton, ...(activeView === 'trash' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('trash')}>回收站</button>
+          <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'trash' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('trash')}>回收站</button>
         </div>
       </div>
     </aside>
@@ -385,24 +393,25 @@ const styles: Record<string, React.CSSProperties> = {
   },
   navSubItems: {
     display: 'flex',
-    flexWrap: 'wrap',
-    gap: 6,
+    flexDirection: 'column',
+    gap: 4,
     paddingLeft: 32,
     paddingBottom: 4,
   },
   filterChip: {
-    border: '1px solid #e0e0e0',
-    borderRadius: 14,
-    padding: '4px 10px',
-    background: '#fff',
-    color: '#888',
+    border: 'none',
+    borderRadius: 8,
+    padding: '8px 12px',
+    background: 'transparent',
+    color: '#444',
     cursor: 'pointer',
-    fontSize: 12,
+    fontSize: 14,
+    textAlign: 'left',
+    width: '100%',
   },
   filterChipActive: {
     background: '#31d266',
     color: '#fff',
-    borderColor: '#31d266',
     fontWeight: 600,
   },
   tagSection: {
