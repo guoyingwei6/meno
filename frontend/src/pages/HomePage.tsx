@@ -4,6 +4,7 @@ import { MemoComposer } from '../components/MemoComposer';
 import { MemoTimeline } from '../components/MemoTimeline';
 import { SidebarShell } from '../components/SidebarShell';
 import { TimelineHeader } from '../components/TimelineHeader';
+import type { SortMode } from '../components/TimelineHeader';
 import { TopBar } from '../components/TopBar';
 import { createMemo, deleteMemo, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, restoreMemo, updateMemo } from '../lib/api';
 import type { CalendarResponse, DashboardStatsResponse, MeResponse, PublicStatsResponse } from '../lib/api';
@@ -35,6 +36,7 @@ export const HomePage = () => {
   const [reviewSeed, setReviewSeed] = useState(0);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [filters, setFilters] = useState<MemoFilters>({});
+  const [sortMode, setSortMode] = useState<SortMode>('created-desc');
 
   // Sync sidebar default when crossing breakpoint
   useEffect(() => {
@@ -175,9 +177,23 @@ export const HomePage = () => {
     if (activeTag) {
       all = all.filter((m) => m.tags.some((t) => t === activeTag || t.startsWith(`${activeTag}/`)));
     }
-    return all;
+    const sorted = [...all];
+    switch (sortMode) {
+      case 'created-asc':
+        sorted.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        break;
+      case 'updated-desc':
+        sorted.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+        break;
+      case 'updated-asc':
+        sorted.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
+        break;
+      default: // created-desc — API 默认顺序
+        break;
+    }
+    return sorted;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, activeTag, activeView, filters, todayMonthDay, todayYear, reviewSeed]);
+  }, [data, activeTag, activeView, filters, todayMonthDay, todayYear, reviewSeed, sortMode]);
 
   if (isLoading || isLoadingMe) {
     return <div style={styles.loading}>Loading...</div>;
@@ -236,7 +252,7 @@ export const HomePage = () => {
         {activeView === 'trash' && isAuthor && (
           <div style={{ ...styles.trashNotice, color: c.textMuted }}>回收站内的笔记仅保留 30 天</div>
         )}
-        <TimelineHeader count={memos.length} />
+        <TimelineHeader count={memos.length} sortMode={sortMode} onSortChange={setSortMode} />
         <MemoTimeline
           memos={memos}
           isAuthor={Boolean(isAuthor)}
