@@ -146,6 +146,7 @@ export const HomePage = () => {
   const todayYear = new Date().getFullYear().toString();
 
   const memos = useMemo(() => {
+    if (activeView === 'trash' && !isAuthor) return [];
     let all = data?.memos ?? [];
     if (activeView === 'onThisDay') {
       all = all.filter((m) => {
@@ -220,6 +221,12 @@ export const HomePage = () => {
         {isAuthor ? <MemoComposer defaultDisplayDate={todayStr} onSubmit={async (input) => {
           await createMemoMutation.mutateAsync(input);
         }} /> : <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后发布 memo</div>}
+        {activeView === 'trash' && !isAuthor && (
+          <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后查看已删除的笔记</div>
+        )}
+        {activeView === 'trash' && isAuthor && (
+          <div style={{ ...styles.trashNotice, color: c.textMuted }}>回收站内的笔记仅保留 30 天</div>
+        )}
         <TimelineHeader count={memos.length} />
         <MemoTimeline
           memos={memos}
@@ -296,6 +303,12 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#999',
     background: '#fff',
     fontSize: 14,
+  },
+  trashNotice: {
+    marginBottom: 12,
+    padding: '10px 16px',
+    fontSize: 13,
+    textAlign: 'center',
   },
   loading: {
     minHeight: '100vh',
