@@ -20,7 +20,7 @@ const DAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 const DAY_LABEL_WIDTH = 24;
 const DAY_LABEL_GAP = 8;
-const MIN_GAP = 2;
+const FIXED_GAP = 2;
 
 const getHeatmapColor = (count: number, isDark: boolean): string => {
   if (count === 0) return isDark ? '#2d333b' : '#ebedf0';
@@ -77,8 +77,7 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
   const { isDark } = useTheme();
   const c = colors(isDark);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [cellSize, setCellSize] = useState(10);
-  const [cellGap, setCellGap] = useState(3);
+  const [cellSize, setCellSize] = useState(0);
 
   const { data, isLoading } = useQuery<RecordStatsResponse>({
     queryKey: isAuthor ? ['dashboard-record-stats'] : ['public-record-stats'],
@@ -94,11 +93,8 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
       const cs = getComputedStyle(el);
       const paddingX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
       const available = el.clientWidth - paddingX - DAY_LABEL_WIDTH - DAY_LABEL_GAP;
-      const perCol = available / weekCount;
-      const gap = Math.max(MIN_GAP, Math.floor(perCol * 0.2));
-      const size = Math.floor(perCol - gap);
-      setCellSize(Math.max(4, size));
-      setCellGap(gap);
+      const size = Math.floor((available - (weekCount - 1) * FIXED_GAP) / weekCount);
+      setCellSize(Math.max(3, size));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -111,7 +107,7 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
   }
 
   const { weeks, monthLabels } = buildHeatmapGrid(data.heatmap);
-  const gridWidth = weeks.length * (cellSize + cellGap);
+  const gridWidth = weeks.length * cellSize + (weeks.length - 1) * FIXED_GAP;
 
   const statItems = [
     { value: data.totalMemos.toLocaleString(), label: '笔记' },
@@ -163,9 +159,9 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
         <div style={{ display: 'flex', gap: DAY_LABEL_GAP }}>
           {/* Grid area */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', gap: cellGap }}>
+            <div style={{ display: 'flex', gap: FIXED_GAP }}>
               {weeks.map((week, wi) => (
-                <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: cellGap }}>
+                <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: FIXED_GAP }}>
                   {Array.from({ length: 7 }, (_, dow) => {
                     const cell = week.find((item) => item.dow === dow);
                     if (!cell) return <div key={dow} style={{ width: cellSize, height: cellSize }} />;
@@ -193,7 +189,7 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
                   key={ml.label + ml.index}
                   style={{
                     position: 'absolute',
-                    left: ml.index * (cellSize + cellGap),
+                    left: ml.index * (cellSize + FIXED_GAP),
                     fontSize: 11,
                     color: c.textMuted,
                     whiteSpace: 'nowrap',
@@ -206,7 +202,7 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
           </div>
 
           {/* Day labels on right */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: cellGap, width: DAY_LABEL_WIDTH, flexShrink: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: FIXED_GAP, width: DAY_LABEL_WIDTH, flexShrink: 0 }}>
             {DAY_LABELS.map((label, i) => (
               <div
                 key={label}
