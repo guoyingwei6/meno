@@ -247,5 +247,6 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #f0f0f0',
     padding: '20px 24px',
     boxSizing: 'border-box',
+    overflow: 'hidden',
   },
 };
