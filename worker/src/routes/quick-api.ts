@@ -6,6 +6,26 @@ import { createMemoSlug } from '../lib/slug';
 
 export const quickApiRoutes = new Hono<{ Bindings: WorkerBindings }>();
 
+/** 把外部图片 URL 下载后上传到 R2，返回我们自己的 CDN URL */
+async function mirrorImages(env: WorkerBindings, urls: string[]): Promise<string[]> {
+  return Promise.all(
+    urls.map(async (url) => {
+      try {
+        const res = await fetch(url, { headers: { Referer: url } });
+        if (!res.ok) return url; // 抓取失败就保留原 URL
+        const contentType = res.headers.get('content-type') || 'image/jpeg';
+        const ext = contentType.split('/')[1]?.split(';')[0] || 'jpg';
+        const key = `uploads/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        await env.ASSETS.put(key, res.body!, { httpMetadata: { contentType } });
+        const baseUrl = env.ASSET_PUBLIC_BASE_URL || `${env.API_ORIGIN}/api/assets`;
+        return `${baseUrl}/${key}`;
+      } catch {
+        return url; // 异常时保留原 URL，不影响笔记创建
+      }
+    })
+  );
+}
+
 // Middleware: API token auth
 quickApiRoutes.use('/*', async (c, next) => {
   if (!isApiKeyValid(c.env, c.req.raw)) {
@@ -41,7 +61,8 @@ quickApiRoutes.get('/memos', async (c) => {
     } else {
       imgs = decoded.split(',').filter(Boolean);
     }
-    const imgMarkdown = imgs.map((url) => `![](${url.trim()})`).join('\n');
+    const mirrored = await mirrorImages(c.env, imgs.map((u) => u.trim()));
+    const imgMarkdown = mirrored.map((url) => `![](${url})`).join('\n');
     finalContent = finalContent ? `${finalContent}\n${imgMarkdown}` : imgMarkdown;
   }
 
@@ -83,9 +104,10 @@ quickApiRoutes.post('/memos', async (c) => {
     ? body.displayDate
     : today;
 
-  // Append images as markdown
+  // Append images as markdown (mirror external images to R2)
   if (body.images && body.images.length > 0) {
-    const imgMarkdown = body.images.map((url) => `![](${url})`).join('\n');
+    const mirrored = await mirrorImages(c.env, body.images);
+    const imgMarkdown = mirrored.map((url) => `![](${url})`).join('\n');
     content = content ? `${content}\n${imgMarkdown}` : imgMarkdown;
   }
 
