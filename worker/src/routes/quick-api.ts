@@ -6,13 +6,13 @@ import { createMemoSlug } from '../lib/slug';
 
 export const quickApiRoutes = new Hono<{ Bindings: WorkerBindings }>();
 
-/** 把外部图片 URL 下载后上传到 R2，返回我们自己的 CDN URL */
+/** 把外部图片 URL 下载后上传到 R2，返回我们自己的 CDN URL；抓取失败的图片直接丢弃 */
 async function mirrorImages(env: WorkerBindings, urls: string[]): Promise<string[]> {
-  return Promise.all(
+  const results = await Promise.all(
     urls.map(async (url) => {
       try {
         const res = await fetch(url, { headers: { Referer: url } });
-        if (!res.ok) return url; // 抓取失败就保留原 URL
+        if (!res.ok) return null;
         const contentType = res.headers.get('content-type') || 'image/jpeg';
         const ext = contentType.split('/')[1]?.split(';')[0] || 'jpg';
         const key = `uploads/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
@@ -20,10 +20,11 @@ async function mirrorImages(env: WorkerBindings, urls: string[]): Promise<string
         const baseUrl = env.ASSET_PUBLIC_BASE_URL || `${env.API_ORIGIN}/api/assets`;
         return `${baseUrl}/${key}`;
       } catch {
-        return url; // 异常时保留原 URL，不影响笔记创建
+        return null;
       }
     })
   );
+  return results.filter((u): u is string => u !== null);
 }
 
 // Middleware: API token auth
