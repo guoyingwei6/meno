@@ -1,14 +1,22 @@
 import { useState } from 'react';
 import { useTheme, colors } from '../lib/theme';
 
-export type SortMode = 'created-desc' | 'created-asc' | 'updated-desc' | 'updated-asc';
+export type SortField = 'display' | 'created' | 'updated';
+export type SortDir = 'desc' | 'asc';
+export type SortMode = `${SortField}-${SortDir}`;
 
-const SORT_LABELS: Record<SortMode, string> = {
-  'created-desc': '创建时间，从新到旧',
-  'created-asc': '创建时间，从旧到新',
-  'updated-desc': '编辑时间，从新到旧',
-  'updated-asc': '编辑时间，从旧到新',
+const FIELD_LABELS: Record<SortField, string> = {
+  display: '展示时间',
+  created: '创建时间',
+  updated: '编辑时间',
 };
+
+const SORT_FIELDS: SortField[] = ['display', 'created', 'updated'];
+
+function parseMode(mode: SortMode): { field: SortField; dir: SortDir } {
+  const lastDash = mode.lastIndexOf('-');
+  return { field: mode.slice(0, lastDash) as SortField, dir: mode.slice(lastDash + 1) as SortDir };
+}
 
 interface TimelineHeaderProps {
   count: number;
@@ -16,10 +24,20 @@ interface TimelineHeaderProps {
   onSortChange?: (mode: SortMode) => void;
 }
 
-export const TimelineHeader = ({ count, sortMode = 'created-desc', onSortChange }: TimelineHeaderProps) => {
+export const TimelineHeader = ({ count, sortMode = 'display-desc', onSortChange }: TimelineHeaderProps) => {
   const { isDark } = useTheme();
   const c = colors(isDark);
   const [open, setOpen] = useState(false);
+  const { field: activeField, dir: activeDir } = parseMode(sortMode);
+
+  const handleFieldClick = (field: SortField) => {
+    if (field === activeField) {
+      onSortChange?.(`${field}-${activeDir === 'desc' ? 'asc' : 'desc'}`);
+    } else {
+      onSortChange?.(`${field}-desc`);
+    }
+    setOpen(false);
+  };
 
   return (
     <div style={styles.wrap}>
@@ -30,28 +48,33 @@ export const TimelineHeader = ({ count, sortMode = 'created-desc', onSortChange 
           style={{ ...styles.sortButton, color: c.textMuted }}
           onClick={() => setOpen((v) => !v)}
         >
-          <span style={styles.sortIcon}>↕</span>
-          {SORT_LABELS[sortMode]}
+          <span style={styles.sortIcon}>{activeDir === 'desc' ? '↓' : '↑'}</span>
+          {FIELD_LABELS[activeField]}
         </button>
         {open && (
           <>
             <div style={styles.backdrop} onClick={() => setOpen(false)} />
             <div style={{ ...styles.dropdown, background: c.cardBg, borderColor: c.border }}>
-              {(Object.keys(SORT_LABELS) as SortMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  style={{
-                    ...styles.dropdownItem,
-                    color: mode === sortMode ? '#31d266' : c.textSecondary,
-                    fontWeight: mode === sortMode ? 600 : 400,
-                  }}
-                  onClick={() => { onSortChange?.(mode); setOpen(false); }}
-                >
-                  {SORT_LABELS[mode]}
-                  {mode === sortMode && <span style={styles.check}>✓</span>}
-                </button>
-              ))}
+              {SORT_FIELDS.map((field) => {
+                const isActive = field === activeField;
+                return (
+                  <button
+                    key={field}
+                    type="button"
+                    style={{
+                      ...styles.dropdownItem,
+                      color: isActive ? '#31d266' : c.textSecondary,
+                      fontWeight: isActive ? 600 : 400,
+                    }}
+                    onClick={() => handleFieldClick(field)}
+                  >
+                    {FIELD_LABELS[field]}
+                    {isActive && (
+                      <span style={styles.arrow}>{activeDir === 'desc' ? '↓' : '↑'}</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </>
         )}
@@ -102,7 +125,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
     zIndex: 10,
-    minWidth: 200,
+    minWidth: 160,
     padding: '4px 0',
   },
   dropdownItem: {
@@ -118,7 +141,7 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'left',
     whiteSpace: 'nowrap',
   },
-  check: {
+  arrow: {
     color: '#31d266',
     fontSize: 14,
     fontWeight: 700,

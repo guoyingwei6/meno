@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTheme, colors } from '../lib/theme';
 import { fetchDashboardRecordStats, fetchPublicRecordStats } from '../lib/api';
 import type { RecordStatsResponse } from '../lib/api';
@@ -76,7 +76,7 @@ const buildHeatmapGrid = (heatmap: { date: string; count: number }[]) => {
 export const StatsView = ({ isAuthor }: StatsViewProps) => {
   const { isDark } = useTheme();
   const c = colors(isDark);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   const [cellSize, setCellSize] = useState(0);
 
   const { data, isLoading } = useQuery<RecordStatsResponse>({
@@ -87,7 +87,7 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
   const weekCount = data ? buildHeatmapGrid(data.heatmap).weeks.length : 53;
 
   useEffect(() => {
-    const el = containerRef.current;
+    const el = containerEl;
     if (!el) return;
     const measure = () => {
       const cs = getComputedStyle(el);
@@ -100,7 +100,7 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [weekCount]);
+  }, [weekCount, containerEl]);
 
   if (isLoading || !data) {
     return <div style={{ color: c.textMuted, fontSize: 14, padding: '20px 0' }}>Loading...</div>;
@@ -114,7 +114,7 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
     { value: data.totalWords.toLocaleString(), label: '字数' },
     { value: data.maxDailyMemos.toLocaleString(), label: '单日最多条数' },
     { value: data.maxDailyWords.toLocaleString(), label: '单日最多字数' },
-    { value: data.activeDays.toLocaleString(), label: '坚持记录天数' },
+    { value: data.activeDays.toLocaleString(), label: '有记录天数' },
   ];
 
   const storageItems = [
@@ -151,7 +151,7 @@ export const StatsView = ({ isAuthor }: StatsViewProps) => {
         </div>
       )}
 
-      <div ref={containerRef} style={{ ...styles.heatmapCard, background: c.cardBg, borderColor: c.border }}>
+      <div ref={setContainerEl} style={{ ...styles.heatmapCard, background: c.cardBg, borderColor: c.border }}>
         <div style={{ fontSize: 15, fontWeight: 600, color: c.textPrimary, marginBottom: 16 }}>
           最近一年记录 {data.yearMemos} 条笔记
         </div>

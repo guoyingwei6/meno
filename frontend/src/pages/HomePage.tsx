@@ -38,7 +38,7 @@ export const HomePage = () => {
   const [reviewSeed, setReviewSeed] = useState(0);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [filters, setFilters] = useState<MemoFilters>({});
-  const [sortMode, setSortMode] = useState<SortMode>('created-desc');
+  const [sortMode, setSortMode] = useState<SortMode>('display-desc');
   const [showImportExport, setShowImportExport] = useState(false);
 
   // Sync sidebar default when crossing breakpoint
@@ -182,6 +182,15 @@ export const HomePage = () => {
     }
     const sorted = [...all];
     switch (sortMode) {
+      case 'display-desc':
+        sorted.sort((a, b) => b.displayDate.localeCompare(a.displayDate) || b.createdAt.localeCompare(a.createdAt));
+        break;
+      case 'display-asc':
+        sorted.sort((a, b) => a.displayDate.localeCompare(b.displayDate) || a.createdAt.localeCompare(b.createdAt));
+        break;
+      case 'created-desc':
+        sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        break;
       case 'created-asc':
         sorted.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
         break;
@@ -190,8 +199,6 @@ export const HomePage = () => {
         break;
       case 'updated-asc':
         sorted.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
-        break;
-      default: // created-desc — API 默认顺序
         break;
     }
     return sorted;
@@ -229,7 +236,7 @@ export const HomePage = () => {
       )}
       <div style={sidebarStyle}>
         <SidebarShell
-          memoCount={isAuthor ? (statsData?.stats.total ?? memos.length) : (publicStatsData?.stats.total ?? memos.length)}
+          memoCount={isAuthor ? (statsData?.stats.public ?? memos.length) : (publicStatsData?.stats.total ?? memos.length)}
           tagCount={isAuthor ? (statsData?.stats.tags ?? allTags.length) : (publicStatsData?.stats.tags ?? allTags.length)}
           streakDays={isAuthor ? (statsData?.stats.streakDays ?? 0) : (publicStatsData?.stats.streakDays ?? 0)}
           activeDate={selectedDate}

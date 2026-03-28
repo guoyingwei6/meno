@@ -1,7 +1,7 @@
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import { extractMarkdownImageUrls, stripMarkdownImageSyntax, stripTagSyntax } from '../lib/content';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { MemoSummary } from '../types/shared';
 import { useTheme, colors } from '../lib/theme';
 
@@ -38,6 +38,17 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
   const contentText = stripTagSyntax(stripMarkdownImageSyntax(memo.content));
   const isLong = contentText.length > 200;
   const wordCount = countWords(memo.content);
+
+  useEffect(() => {
+    if (lightboxIndex === null || imageUrls.length <= 1) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') setLightboxIndex((i) => i === null ? null : (i - 1 + imageUrls.length) % imageUrls.length);
+      if (e.key === 'ArrowRight') setLightboxIndex((i) => i === null ? null : (i + 1) % imageUrls.length);
+      if (e.key === 'Escape') setLightboxIndex(null);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [lightboxIndex, imageUrls.length]);
 
   const handleShare = () => {
     const url = `${window.location.origin}/memos/${memo.slug}`;
@@ -105,6 +116,12 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
             ul: ({ children }) => <ul style={{ margin: '0 0 8px', paddingLeft: 20 }}>{children}</ul>,
             ol: ({ children }) => <ol style={{ margin: '0 0 8px', paddingLeft: 20 }}>{children}</ol>,
             li: ({ children }) => <li style={{ lineHeight: 1.7 }}>{children}</li>,
+            h1: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
+            h2: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
+            h3: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
+            h4: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
+            h5: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
+            h6: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
           }}
         >
           {contentText}

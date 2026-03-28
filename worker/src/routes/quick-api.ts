@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { createMemo } from '../db/memo-repository';
+import { createMemo, trashMemo } from '../db/memo-repository';
 import type { WorkerBindings } from '../db/client';
 import { isApiKeyValid } from '../lib/auth';
 import { createMemoSlug } from '../lib/slug';
@@ -32,11 +32,15 @@ quickApiRoutes.post('/memos', async (c) => {
     content: string;
     visibility?: 'public' | 'private' | 'draft';
     images?: string[];
+    displayDate?: string;
   }>();
 
   let content = body.content || '';
   const visibility = body.visibility || 'public';
   const today = new Date().toISOString().slice(0, 10);
+  const displayDate = body.displayDate && /^\d{4}-\d{2}-\d{2}$/.test(body.displayDate)
+    ? body.displayDate
+    : today;
 
   // Append images as markdown
   if (body.images && body.images.length > 0) {
@@ -48,7 +52,7 @@ quickApiRoutes.post('/memos', async (c) => {
     slug: createMemoSlug(),
     content,
     visibility,
-    displayDate: today,
+    displayDate,
   });
 
   return c.json({ memo }, 201);
@@ -78,4 +82,18 @@ quickApiRoutes.post('/upload', async (c) => {
   const url = `${baseUrl}/${key}`;
 
   return c.json({ url });
+});
+
+/**
+ * DELETE /api/quick/memos/:slug
+ * Trash a memo by slug (for import cleanup)
+ */
+quickApiRoutes.delete('/memos/:slug', async (c) => {
+  const slug = c.req.param('slug');
+  const row = await c.env.DB.prepare('SELECT id FROM memos WHERE slug = ? AND deleted_at IS NULL LIMIT 1')
+    .bind(slug)
+    .first<{ id: number }>();
+  if (!row) return c.json({ message: 'Not found' }, 404);
+  await trashMemo(c.env.DB, row.id);
+  return c.json({ success: true });
 });

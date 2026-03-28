@@ -39,14 +39,14 @@ export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, 
   return (
     <header style={styles.header}>
       <div style={styles.leftActions}>
-        <button type="button" style={styles.iconButton} onClick={onToggleSidebar} aria-label="切换侧边栏">
+        <button type="button" style={styles.iconButton} onClick={onToggleSidebar} aria-label="切换侧边栏" title="折叠 / 展开侧边栏">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c.textTertiary} strokeWidth="2">
             <line x1="3" y1="6" x2="21" y2="6" />
             <line x1="3" y1="12" x2="21" y2="12" />
             <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         </button>
-        <button type="button" style={styles.iconButton} onClick={handleRefresh} aria-label="刷新">
+        <button type="button" style={styles.iconButton} onClick={handleRefresh} aria-label="刷新" title="刷新">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={spinning ? c.accent : c.textTertiary} strokeWidth="2" style={{ transition: 'transform 0.6s ease', transform: spinning ? 'rotate(360deg)' : 'rotate(0deg)' }}>
             <path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
           </svg>

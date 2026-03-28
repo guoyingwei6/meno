@@ -44,6 +44,12 @@ export const MemoDetailPage = () => {
           components={{
             img: ({ src = '', alt = '' }) => <img src={src} alt={alt || 'memo image'} style={{ maxWidth: '100%', borderRadius: 8, margin: '8px 0' }} />,
             p: ({ children }) => <p style={{ lineHeight: 1.7, fontSize: 14, color: '#333', margin: '0 0 8px', whiteSpace: 'pre-wrap' }}>{children}</p>,
+            h1: ({ children }) => <p style={{ lineHeight: 1.7, fontSize: 14, color: '#333', margin: '0 0 8px' }}>{children}</p>,
+            h2: ({ children }) => <p style={{ lineHeight: 1.7, fontSize: 14, color: '#333', margin: '0 0 8px' }}>{children}</p>,
+            h3: ({ children }) => <p style={{ lineHeight: 1.7, fontSize: 14, color: '#333', margin: '0 0 8px' }}>{children}</p>,
+            h4: ({ children }) => <p style={{ lineHeight: 1.7, fontSize: 14, color: '#333', margin: '0 0 8px' }}>{children}</p>,
+            h5: ({ children }) => <p style={{ lineHeight: 1.7, fontSize: 14, color: '#333', margin: '0 0 8px' }}>{children}</p>,
+            h6: ({ children }) => <p style={{ lineHeight: 1.7, fontSize: 14, color: '#333', margin: '0 0 8px' }}>{children}</p>,
           }}
         >
           {stripTagSyntax(data.memo.content)}

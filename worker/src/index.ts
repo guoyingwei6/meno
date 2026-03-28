@@ -43,7 +43,8 @@ app.get('/assets/:key{.+}', async (c) => {
 export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledEvent, env: { DB: D1Database; ASSETS: R2Bucket }) {
-    const { purgeOldTrash } = await import('./db/memo-repository');
+    const { purgeOldTrash, backupMemosToR2 } = await import('./db/memo-repository');
     await purgeOldTrash(env.DB, env.ASSETS);
+    await backupMemosToR2(env.DB, env.ASSETS);
   },
 };

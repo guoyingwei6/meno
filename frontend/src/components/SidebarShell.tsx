@@ -148,7 +148,7 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
             else if (count >= 2) bg = isDark ? '#245a30' : '#a3ebc0';
             else if (count >= 1) bg = c.accentLight;
 
-            const color = isActive ? '#fff' : count > 0 ? (isDark ? '#8fd6a5' : '#1a7a3a') : c.textSecondary;
+            const color = isActive ? '#fff' : c.textSecondary;
             const fontWeight = isActive || count > 0 || isToday ? 700 : 400;
 
             return (

@@ -99,7 +99,7 @@ export const fetchPublicTags = async (): Promise<TagListResponse> => {
 };
 
 export const fetchDashboardTags = async (): Promise<TagListResponse> => {
-  const response = await fetch(withApiBase('/api/dashboard/tags'));
+  const response = await fetch(withApiBase('/api/dashboard/tags'), { credentials: 'include' });
 
   if (!response.ok) {
     throw new Error('Failed to fetch dashboard tags');
@@ -168,7 +168,7 @@ export const fetchDashboardCalendar = async (): Promise<CalendarResponse> => {
 };
 
 export const fetchDashboardStats = async (): Promise<DashboardStatsResponse> => {
-  const response = await fetch(withApiBase('/api/dashboard/stats'));
+  const response = await fetch(withApiBase('/api/dashboard/stats'), { credentials: 'include' });
 
   if (!response.ok) {
     throw new Error('Failed to fetch dashboard stats');

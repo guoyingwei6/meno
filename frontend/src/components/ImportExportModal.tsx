@@ -20,7 +20,8 @@ function parseFrontmatterDate(raw: string): string {
 
 function parseFrontmatterBody(raw: string): string {
   const match = raw.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?([\s\S]*)$/);
-  return match ? match[1].trim() : raw.trim();
+  const body = match ? match[1].trim() : raw.trim();
+  return body.replace(/^#{1,6} +/gm, '');
 }
 
 /** Find all `images/xxx` local refs in content, return just filenames */

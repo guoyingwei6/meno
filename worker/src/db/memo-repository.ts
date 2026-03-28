@@ -37,16 +37,21 @@ const attachTags = async (db: D1Database, memos: MemoSummary[]) => {
   }
 
   const ids = memos.map((memo) => memo.id);
-  const placeholders = ids.map(() => '?').join(', ');
-  const { results } = await db.prepare(`SELECT memo_id, tag FROM memo_tags WHERE memo_id IN (${placeholders}) ORDER BY tag ASC`).bind(...ids).all();
   const tagsByMemo = new Map<number, string[]>();
 
-  for (const row of results ?? []) {
-    const memoId = Number((row as Record<string, unknown>).memo_id);
-    const tag = String((row as Record<string, unknown>).tag);
-    const current = tagsByMemo.get(memoId) ?? [];
-    current.push(tag);
-    tagsByMemo.set(memoId, current);
+  // D1 limits bound parameters to 100 per query; batch in chunks of 99
+  const CHUNK = 99;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    const placeholders = chunk.map(() => '?').join(', ');
+    const { results } = await db.prepare(`SELECT memo_id, tag FROM memo_tags WHERE memo_id IN (${placeholders}) ORDER BY tag ASC`).bind(...chunk).all();
+    for (const row of results ?? []) {
+      const memoId = Number((row as Record<string, unknown>).memo_id);
+      const tag = String((row as Record<string, unknown>).tag);
+      const current = tagsByMemo.get(memoId) ?? [];
+      current.push(tag);
+      tagsByMemo.set(memoId, current);
+    }
   }
 
   return memos.map((memo) => ({ ...memo, tags: tagsByMemo.get(memo.id) ?? [] }));
@@ -345,14 +350,14 @@ export const getPublicStats = async (db: D1Database): Promise<{ total: number; t
        WHERE memos.visibility = 'public' AND memos.deleted_at IS NULL`,
     )
     .first<{ count: number }>();
-  const streak = await db
-    .prepare("SELECT COUNT(DISTINCT display_date) as count FROM memos WHERE visibility = 'public' AND deleted_at IS NULL")
-    .first<{ count: number }>();
+  const span = await db
+    .prepare("SELECT CAST((julianday('now') - julianday(MIN(display_date))) AS INTEGER) + 1 as days FROM memos WHERE visibility = 'public' AND deleted_at IS NULL")
+    .first<{ days: number }>();
 
   return {
     total: total?.count ?? 0,
     tags: tags?.count ?? 0,
-    streakDays: streak?.count ?? 0,
+    streakDays: span?.days ?? 0,
   };
 };
 
@@ -387,7 +392,7 @@ export const listAuthorTagCounts = async (db: D1Database): Promise<Array<{ tag: 
       `SELECT memo_tags.tag as tag, COUNT(*) as count
        FROM memo_tags
        INNER JOIN memos ON memos.id = memo_tags.memo_id
-       WHERE memos.deleted_at IS NULL
+       WHERE memos.visibility = 'public' AND memos.deleted_at IS NULL
        GROUP BY memo_tags.tag
        ORDER BY memo_tags.tag ASC`,
     )
@@ -418,12 +423,12 @@ export const getDashboardStats = async (db: D1Database): Promise<{
       `SELECT COUNT(DISTINCT memo_tags.tag) as count
        FROM memo_tags
        INNER JOIN memos ON memos.id = memo_tags.memo_id
-       WHERE memos.deleted_at IS NULL`,
+       WHERE memos.visibility = 'public' AND memos.deleted_at IS NULL`,
     )
     .first<{ count: number }>();
-  const streakCount = await db
-    .prepare('SELECT COUNT(DISTINCT display_date) as count FROM memos WHERE deleted_at IS NULL')
-    .first<{ count: number }>();
+  const spanRow = await db
+    .prepare("SELECT CAST((julianday('now') - julianday(MIN(display_date))) AS INTEGER) + 1 as days FROM memos WHERE visibility = 'public' AND deleted_at IS NULL")
+    .first<{ days: number }>();
 
   return {
     total: total?.count ?? 0,
@@ -432,6 +437,66 @@ export const getDashboardStats = async (db: D1Database): Promise<{
     draft: draftCount?.count ?? 0,
     trash: trashCount?.count ?? 0,
     tags: tagsCount?.count ?? 0,
-    streakDays: streakCount?.count ?? 0,
+    streakDays: spanRow?.days ?? 0,
   };
+};
+
+export const backupMemosToR2 = async (db: D1Database, r2: R2Bucket, keepDays = 365): Promise<void> => {
+  // Export all memos (including trashed) with their tags
+  const { results: memoRows } = await db
+    .prepare('SELECT id, slug, content, visibility, display_date, created_at, updated_at, deleted_at FROM memos ORDER BY id ASC')
+    .all();
+
+  const ids = (memoRows ?? []).map((r) => Number((r as Record<string, unknown>).id));
+  const tagsByMemo = new Map<number, string[]>();
+
+  const CHUNK = 99;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    const placeholders = chunk.map(() => '?').join(', ');
+    const { results: tagRows } = await db
+      .prepare(`SELECT memo_id, tag FROM memo_tags WHERE memo_id IN (${placeholders}) ORDER BY tag ASC`)
+      .bind(...chunk)
+      .all();
+    for (const row of tagRows ?? []) {
+      const mid = Number((row as Record<string, unknown>).memo_id);
+      const tag = String((row as Record<string, unknown>).tag);
+      const arr = tagsByMemo.get(mid) ?? [];
+      arr.push(tag);
+      tagsByMemo.set(mid, arr);
+    }
+  }
+
+  const memos = (memoRows ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    const id = Number(row.id);
+    return {
+      id,
+      slug: String(row.slug),
+      content: String(row.content),
+      visibility: String(row.visibility),
+      displayDate: String(row.display_date),
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+      deletedAt: row.deleted_at ? String(row.deleted_at) : null,
+      tags: tagsByMemo.get(id) ?? [],
+    };
+  });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const key = `backups/${today}.json`;
+  const body = JSON.stringify({ exportedAt: new Date().toISOString(), count: memos.length, memos });
+  await r2.put(key, body, { httpMetadata: { contentType: 'application/json' } });
+
+  // Delete backups older than keepDays
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - keepDays);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const list = await r2.list({ prefix: 'backups/' });
+  for (const obj of list.objects) {
+    const dateStr = obj.key.slice('backups/'.length, 'backups/'.length + 10);
+    if (dateStr < cutoffStr) {
+      await r2.delete(obj.key);
+    }
+  }
 };

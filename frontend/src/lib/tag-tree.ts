@@ -54,6 +54,7 @@ export const buildTagTree = (tags: string[] | Array<{ tag: string; count: number
     .sort((a, b) => a.label.localeCompare(b.label));
 
   const flatList: TagTreeChild[] = Array.from(flat.entries())
+    .filter(([name]) => !groups.has(name))
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
