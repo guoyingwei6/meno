@@ -32,7 +32,7 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
   const c = colors(isDark);
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const imageUrls = extractMarkdownImageUrls(memo.content);
   const contentText = stripTagSyntax(stripMarkdownImageSyntax(memo.content));
@@ -121,8 +121,8 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
       ) : null}
       {imageUrls.length > 0 ? (
         <div style={styles.previewGrid}>
-          {imageUrls.map((url) => (
-            <img key={url} src={url} alt="memo preview" loading="lazy" decoding="async" style={styles.previewImage} onClick={() => setLightboxUrl(url)} />
+          {imageUrls.map((url, i) => (
+            <img key={url} src={url} alt="memo preview" loading="lazy" decoding="async" style={styles.previewImage} onClick={() => setLightboxIndex(i)} />
           ))}
         </div>
       ) : null}
@@ -131,9 +131,26 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
         <span style={styles.footerText}>创建于 {formatTime(memo.createdAt)}</span>
         {memo.updatedAt !== memo.createdAt ? <span style={styles.footerText}>编辑于 {formatTime(memo.updatedAt)}</span> : null}
       </div>
-      {lightboxUrl ? (
-        <div style={styles.lightbox} onClick={() => setLightboxUrl(null)}>
-          <img src={lightboxUrl} alt="full size" style={styles.lightboxImage} />
+      {lightboxIndex !== null ? (
+        <div style={styles.lightbox} onClick={() => setLightboxIndex(null)}>
+          {imageUrls.length > 1 && (
+            <button
+              type="button"
+              style={styles.lightboxArrowLeft}
+              onClick={(e) => { e.stopPropagation(); setLightboxIndex((lightboxIndex - 1 + imageUrls.length) % imageUrls.length); }}
+            >‹</button>
+          )}
+          <img src={imageUrls[lightboxIndex]} alt="full size" style={styles.lightboxImage} onClick={(e) => e.stopPropagation()} />
+          {imageUrls.length > 1 && (
+            <button
+              type="button"
+              style={styles.lightboxArrowRight}
+              onClick={(e) => { e.stopPropagation(); setLightboxIndex((lightboxIndex + 1) % imageUrls.length); }}
+            >›</button>
+          )}
+          {imageUrls.length > 1 && (
+            <span style={styles.lightboxCounter}>{lightboxIndex + 1} / {imageUrls.length}</span>
+          )}
         </div>
       ) : null}
     </article>
@@ -274,7 +291,7 @@ const styles: Record<string, React.CSSProperties> = {
   lightbox: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(0,0,0,0.7)',
+    background: 'rgba(0,0,0,0.85)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -282,9 +299,47 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'zoom-out',
   },
   lightboxImage: {
-    maxWidth: '90vw',
-    maxHeight: '90vh',
+    maxWidth: '80vw',
+    maxHeight: '85vh',
     borderRadius: 8,
     objectFit: 'contain',
+    cursor: 'default',
+  },
+  lightboxArrowLeft: {
+    position: 'absolute',
+    left: 16,
+    background: 'rgba(255,255,255,0.15)',
+    border: 'none',
+    color: '#fff',
+    fontSize: 40,
+    lineHeight: 1,
+    padding: '8px 16px',
+    borderRadius: 8,
+    cursor: 'pointer',
+    userSelect: 'none',
+  },
+  lightboxArrowRight: {
+    position: 'absolute',
+    right: 16,
+    background: 'rgba(255,255,255,0.15)',
+    border: 'none',
+    color: '#fff',
+    fontSize: 40,
+    lineHeight: 1,
+    padding: '8px 16px',
+    borderRadius: 8,
+    cursor: 'pointer',
+    userSelect: 'none',
+  },
+  lightboxCounter: {
+    position: 'absolute',
+    bottom: 20,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    background: 'rgba(0,0,0,0.4)',
+    padding: '3px 10px',
+    borderRadius: 12,
   },
 };
