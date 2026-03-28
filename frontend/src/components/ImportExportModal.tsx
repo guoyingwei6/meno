@@ -73,7 +73,7 @@ export const ImportExportModal = ({ onClose, onImportDone }: ImportExportModalPr
   // Step 2: image files (only the ones the user picks)
   const [imgMap, setImgMap] = useState<Map<string, File>>(new Map());
 
-  const [visibility, setVisibility] = useState<MemoVisibility>('private');
+  const [visibility, setVisibility] = useState<MemoVisibility>('public');
   const [importing, setImporting] = useState(false);
   const [importLog, setImportLog] = useState<string[]>([]);
   const [importDone, setImportDone] = useState(false);
@@ -288,7 +288,7 @@ export const ImportExportModal = ({ onClose, onImportDone }: ImportExportModalPr
             {mdFiles.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: c.textSecondary }}>
                 <span>导入为：</span>
-                {(['private', 'public'] as MemoVisibility[]).map((v) => (
+                {(['public', 'private'] as MemoVisibility[]).map((v) => (
                   <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: c.textPrimary }}>
                     <input type="radio" name="vis" value={v} checked={visibility === v} onChange={() => setVisibility(v)} />
                     {v === 'private' ? '私密' : '公开'}
