@@ -38,9 +38,10 @@ export const MemoEditPage = () => {
     if (memo && textContent === null) {
       const urls = extractMarkdownImageUrls(memo.content);
       const text = stripMarkdownImageSyntax(memo.content)
-        // Clean up leftover flomo attachment separator lines
-        .replace(/\n---\n\*\*附件：\*\*\n?/g, '\n')
-        .replace(/\n---\n?$/, '')
+        // Remove flomo attachment block: ---\n**附件：** (with any number of surrounding newlines)
+        .replace(/\n+---+\n+\*\*附件[：:]\*\*\n*/g, '\n')
+        // Remove trailing --- separator
+        .replace(/\n+---+\s*$/g, '')
         .trim();
       setTextContent(text);
       setImageUrls(urls);
@@ -76,7 +77,7 @@ export const MemoEditPage = () => {
 
   const pageBg: React.CSSProperties = { padding: 32, maxWidth: 880, margin: '0 auto', color: c.textPrimary };
   const textareaStyle: React.CSSProperties = {
-    width: '100%', minHeight: 200, padding: 16, borderRadius: 12,
+    width: '100%', minHeight: 400, padding: 16, borderRadius: 12,
     border: `1px solid ${c.borderMedium}`, fontSize: 15, lineHeight: 1.6,
     boxSizing: 'border-box', resize: 'vertical',
     background: c.cardBg, color: c.textPrimary,
