@@ -22,7 +22,8 @@ quickApiRoutes.use('/*', async (c, next) => {
  *   https://api.meno.guoyingwei.top/api/quick/memos?key=TOKEN&content=想法%20%23标签
  */
 quickApiRoutes.get('/memos', async (c) => {
-  const content = c.req.query('content') || '';
+  const decode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
+  const content = decode(c.req.query('content') || '');
   const visibility = (c.req.query('visibility') || 'public') as 'public' | 'private' | 'draft';
   const today = new Date().toISOString().slice(0, 10);
   const displayDate = (() => {
@@ -31,10 +32,16 @@ quickApiRoutes.get('/memos', async (c) => {
   })();
 
   let finalContent = content;
-  const imageUrls = c.req.query('image_urls');
-  if (imageUrls) {
-    const imgs = imageUrls.split(',').filter(Boolean);
-    const imgMarkdown = imgs.map((url) => `![](${url})`).join('\n');
+  const imageUrlsRaw = c.req.query('image_urls');
+  if (imageUrlsRaw) {
+    let imgs: string[] = [];
+    const decoded = decode(imageUrlsRaw);
+    if (decoded.trimStart().startsWith('[')) {
+      try { imgs = JSON.parse(decoded); } catch { imgs = [decoded]; }
+    } else {
+      imgs = decoded.split(',').filter(Boolean);
+    }
+    const imgMarkdown = imgs.map((url) => `![](${url.trim()})`).join('\n');
     finalContent = finalContent ? `${finalContent}\n${imgMarkdown}` : imgMarkdown;
   }
 
