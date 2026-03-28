@@ -15,6 +15,40 @@ quickApiRoutes.use('/*', async (c, next) => {
 });
 
 /**
+ * GET /api/quick/memos
+ * Query: key=<token>&content=<text>&visibility=public|private&image_urls=url1,url2&display_date=YYYY-MM-DD
+ *
+ * 快捷指令"打开网址"用法（最简单）：
+ *   https://api.meno.guoyingwei.top/api/quick/memos?key=TOKEN&content=想法%20%23标签
+ */
+quickApiRoutes.get('/memos', async (c) => {
+  const content = c.req.query('content') || '';
+  const visibility = (c.req.query('visibility') || 'public') as 'public' | 'private' | 'draft';
+  const today = new Date().toISOString().slice(0, 10);
+  const displayDate = (() => {
+    const d = c.req.query('display_date');
+    return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : today;
+  })();
+
+  let finalContent = content;
+  const imageUrls = c.req.query('image_urls');
+  if (imageUrls) {
+    const imgs = imageUrls.split(',').filter(Boolean);
+    const imgMarkdown = imgs.map((url) => `![](${url})`).join('\n');
+    finalContent = finalContent ? `${finalContent}\n${imgMarkdown}` : imgMarkdown;
+  }
+
+  const memo = await createMemo(c.env.DB, {
+    slug: createMemoSlug(),
+    content: finalContent,
+    visibility,
+    displayDate,
+  });
+
+  return c.json({ memo }, 201);
+});
+
+/**
  * POST /api/quick/memos
  * Body: { content: string, visibility?: string, images?: string[] }
  *

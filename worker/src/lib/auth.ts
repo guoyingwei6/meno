@@ -27,7 +27,10 @@ export const isApiKeyValid = (env: WorkerBindings, request: Request) => {
   if (!token) return false;
   const header = request.headers.get('Authorization') || request.headers.get('X-API-Key') || '';
   const provided = header.startsWith('Bearer ') ? header.slice(7) : header;
-  return provided === token;
+  if (provided === token) return true;
+  // Also accept key as query param for GET shortcuts
+  const url = new URL(request.url);
+  return url.searchParams.get('key') === token;
 };
 
 export const resolveAuthorSession = async (env: WorkerBindings, cookieHeader: string | undefined) => {
