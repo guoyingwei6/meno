@@ -123,7 +123,6 @@ export const MemoEditPage = () => {
             style={{ padding: '8px 10px', borderRadius: 8, border: `1px solid ${c.borderMedium}`, background: c.cardBg, color: c.textPrimary }}>
             <option value="public">公开</option>
             <option value="private">私密</option>
-            <option value="draft">草稿</option>
           </select>
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

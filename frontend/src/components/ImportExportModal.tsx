@@ -288,10 +288,10 @@ export const ImportExportModal = ({ onClose, onImportDone }: ImportExportModalPr
             {mdFiles.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: c.textSecondary }}>
                 <span>导入为：</span>
-                {(['private', 'public', 'draft'] as MemoVisibility[]).map((v) => (
+                {(['private', 'public'] as MemoVisibility[]).map((v) => (
                   <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: c.textPrimary }}>
                     <input type="radio" name="vis" value={v} checked={visibility === v} onChange={() => setVisibility(v)} />
-                    {v === 'private' ? '私密' : v === 'public' ? '公开' : '草稿'}
+                    {v === 'private' ? '私密' : '公开'}
                   </label>
                 ))}
               </div>
