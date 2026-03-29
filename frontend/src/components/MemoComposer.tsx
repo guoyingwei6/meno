@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { getCaretCoords } from '../lib/caret';
 import { useTheme, colors } from '../lib/theme';
 
 interface MemoComposerSubmitInput {
@@ -40,22 +41,25 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const [visibility, setVisibility] = useState<'public' | 'private' | 'draft'>('public');
   const [displayDate, setDisplayDate] = useState(defaultDisplayDate);
   const [images, setImages] = useState<UploadedImage[]>([]);
-  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
+  const [tagDropdown, setTagDropdown] = useState<{ suggestions: string[]; top: number; left: number } | null>(null);
   const { isDark } = useTheme();
   const c = colors(isDark);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const updateTagSuggestions = (value: string, cursorPos: number) => {
+    const ta = textareaRef.current;
     const before = value.slice(0, cursorPos);
     const match = before.match(/#([^\s#]*)$/);
-    if (!match) { setTagSuggestions([]); return; }
+    if (!match || !ta) { setTagDropdown(null); return; }
     const prefix = match[1];
     const suggestions = existingTags
       .map((t) => t.tag)
       .filter((t) => t.startsWith(prefix) && t !== prefix)
-      .slice(0, 10);
-    setTagSuggestions(suggestions);
+      .slice(0, 8);
+    if (!suggestions.length) { setTagDropdown(null); return; }
+    const coords = getCaretCoords(ta);
+    setTagDropdown({ suggestions, ...coords });
   };
 
   const applyTagSuggestion = (tag: string) => {
@@ -67,7 +71,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     if (!match) return;
     const newContent = content.slice(0, cursorPos - match[0].length) + '#' + tag + ' ' + content.slice(cursorPos);
     setContent(newContent);
-    setTagSuggestions([]);
+    setTagDropdown(null);
     setTimeout(() => {
       const newPos = cursorPos - match[0].length + tag.length + 2;
       ta.focus();
@@ -154,11 +158,11 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
           ))}
         </div>
       ) : null}
-      {tagSuggestions.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, padding: '6px 12px', overflowX: 'auto', borderTop: `1px solid ${c.borderLight}`, scrollbarWidth: 'none' }}>
-          {tagSuggestions.map((tag) => (
+      {tagDropdown && (
+        <div style={{ position: 'fixed', top: tagDropdown.top, left: tagDropdown.left, zIndex: 200, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, overflow: 'hidden' }}>
+          {tagDropdown.suggestions.map((tag) => (
             <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
-              style={{ flexShrink: 0, border: `1px solid #3aa864`, borderRadius: 12, padding: '2px 10px', fontSize: 13, color: '#3aa864', background: 'transparent', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               #{tag}
             </button>
           ))}
