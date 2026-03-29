@@ -149,7 +149,20 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
         {memo.updatedAt !== memo.createdAt ? <span style={styles.footerText}>编辑于 {formatTime(memo.updatedAt)}</span> : null}
       </div>
       {lightboxIndex !== null ? (
-        <div style={styles.lightbox} onClick={() => setLightboxIndex(null)}>
+        <div
+          style={styles.lightbox}
+          onClick={() => setLightboxIndex(null)}
+          onTouchStart={(e) => { (e.currentTarget as HTMLElement).dataset.touchX = String(e.touches[0].clientX); }}
+          onTouchEnd={(e) => {
+            const startX = Number((e.currentTarget as HTMLElement).dataset.touchX ?? 0);
+            const diff = e.changedTouches[0].clientX - startX;
+            if (Math.abs(diff) < 40) return;
+            e.stopPropagation();
+            setLightboxIndex((i) => i === null ? null : diff < 0
+              ? (i + 1) % imageUrls.length
+              : (i - 1 + imageUrls.length) % imageUrls.length);
+          }}
+        >
           {imageUrls.length > 1 && (
             <button
               type="button"
