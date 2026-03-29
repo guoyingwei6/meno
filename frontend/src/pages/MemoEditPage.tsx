@@ -30,6 +30,7 @@ export const MemoEditPage = () => {
   const { isDark } = useTheme();
   const c = colors(isDark);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorWrapRef = useRef<HTMLDivElement>(null);
 
   const { data: me, isLoading: meLoading } = useQuery({ queryKey: ['me'], queryFn: fetchMe });
   const isAuthor = me?.authenticated && me.role === 'author';
@@ -58,9 +59,10 @@ export const MemoEditPage = () => {
 
   const updateTagSuggestions = (value: string, cursorPos: number) => {
     const ta = textareaRef.current;
+    const container = editorWrapRef.current;
     const before = value.slice(0, cursorPos);
     const match = before.match(/#([^\s#]*)$/);
-    if (!match || !ta) { setTagDropdown(null); return; }
+    if (!match || !ta || !container) { setTagDropdown(null); return; }
     const prefix = match[1];
     const recent = getRecentTags();
     const suggestions = existingTags
@@ -74,7 +76,7 @@ export const MemoEditPage = () => {
       })
       .slice(0, 8);
     if (!suggestions.length) { setTagDropdown(null); return; }
-    const coords = getCaretCoords(ta);
+    const coords = getCaretCoords(ta, container);
     setTagDropdown({ suggestions, ...coords });
   };
 
@@ -197,7 +199,7 @@ export const MemoEditPage = () => {
       <div style={{ background: c.cardBg, borderRadius: 12, border: `1px solid ${c.borderMedium}`, overflow: 'hidden', marginBottom: 16 }}>
 
         {/* Textarea + overlay */}
-        <div style={{ position: 'relative' }}>
+        <div ref={editorWrapRef} style={{ position: 'relative' }}>
           <HighlightOverlay text={editText} textColor={c.textPrimary} />
           <textarea
             ref={textareaRef}
@@ -211,11 +213,23 @@ export const MemoEditPage = () => {
             value={editText}
             onChange={(e) => { setTextContent(e.target.value); updateTagSuggestions(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
             onKeyUp={(e) => updateTagSuggestions(textContent ?? '', (e.target as HTMLTextAreaElement).selectionStart)}
+            onCompositionEnd={(e) => { const ta = e.target as HTMLTextAreaElement; updateTagSuggestions(ta.value, ta.selectionStart); }}
             onScroll={(e) => {
               const overlay = (e.target as HTMLElement).previousElementSibling as HTMLElement;
               if (overlay) overlay.scrollTop = (e.target as HTMLElement).scrollTop;
+              updateTagSuggestions(textContent ?? '', textareaRef.current?.selectionStart ?? 0);
             }}
           />
+          {tagDropdown && (
+            <div style={{ position: 'absolute', top: tagDropdown.top, left: tagDropdown.left, zIndex: 200, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, overflow: 'hidden' }}>
+              {tagDropdown.suggestions.map((tag) => (
+                <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  #{tag}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Image thumbnails */}
@@ -233,16 +247,6 @@ export const MemoEditPage = () => {
           </div>
         )}
 
-        {tagDropdown && (
-          <div style={{ position: 'fixed', top: tagDropdown.top, left: tagDropdown.left, zIndex: 200, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, overflow: 'hidden' }}>
-            {tagDropdown.suggestions.map((tag) => (
-              <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
-                style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                #{tag}
-              </button>
-            ))}
-          </div>
-        )}
         {/* Toolbar */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 12px', borderTop: `1px solid ${c.borderLight}` }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>

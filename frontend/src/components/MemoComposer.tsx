@@ -46,12 +46,14 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const c = colors(isDark);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const editorWrapRef = useRef<HTMLDivElement | null>(null);
 
   const updateTagSuggestions = (value: string, cursorPos: number) => {
     const ta = textareaRef.current;
+    const container = editorWrapRef.current;
     const before = value.slice(0, cursorPos);
     const match = before.match(/#([^\s#]*)$/);
-    if (!match || !ta) { setTagDropdown(null); return; }
+    if (!match || !ta || !container) { setTagDropdown(null); return; }
     const prefix = match[1];
     const recent = getRecentTags();
     const suggestions = existingTags
@@ -66,7 +68,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
       })
       .slice(0, 8);
     if (!suggestions.length) { setTagDropdown(null); return; }
-    const coords = getCaretCoords(ta);
+    const coords = getCaretCoords(ta, container);
     setTagDropdown({ suggestions, ...coords });
   };
 
@@ -132,7 +134,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
 
   return (
     <section style={{ ...styles.card, background: c.cardBg, borderColor: c.borderMedium }}>
-      <div style={styles.editorWrap}>
+      <div ref={editorWrapRef} style={styles.editorWrap}>
         <HighlightOverlay text={content} textColor={c.textPrimary} />
         <textarea
           ref={textareaRef}
@@ -144,11 +146,24 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
             updateTagSuggestions(event.target.value, event.target.selectionStart ?? event.target.value.length);
           }}
           onKeyUp={(e) => updateTagSuggestions(content, (e.target as HTMLTextAreaElement).selectionStart)}
+          onCompositionEnd={(e) => { const ta = e.target as HTMLTextAreaElement; updateTagSuggestions(ta.value, ta.selectionStart); }}
           onScroll={(e) => {
             const overlay = (e.target as HTMLElement).previousElementSibling as HTMLElement;
             if (overlay) overlay.scrollTop = (e.target as HTMLElement).scrollTop;
+            // update dropdown position on scroll
+            updateTagSuggestions(content, textareaRef.current?.selectionStart ?? content.length);
           }}
         />
+        {tagDropdown && (
+          <div style={{ position: 'absolute', top: tagDropdown.top, left: tagDropdown.left, zIndex: 200, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, overflow: 'hidden' }}>
+            {tagDropdown.suggestions.map((tag) => (
+              <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                #{tag}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       {images.length > 0 ? (
         <div style={styles.imagePreviewGrid}>
@@ -167,16 +182,6 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
           ))}
         </div>
       ) : null}
-      {tagDropdown && (
-        <div style={{ position: 'fixed', top: tagDropdown.top, left: tagDropdown.left, zIndex: 200, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, overflow: 'hidden' }}>
-          {tagDropdown.suggestions.map((tag) => (
-            <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
-              style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              #{tag}
-            </button>
-          ))}
-        </div>
-      )}
       <div style={{ ...styles.toolbar, borderTopColor: c.borderLight }}>
         <div style={styles.toolsRow}>
           <button type="button" style={{ ...styles.fmtButton, color: '#3aa864', fontWeight: 700 }} title="添加标签" onClick={() => {

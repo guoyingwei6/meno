@@ -10,8 +10,14 @@ export function recordRecentTag(tag: string): void {
   localStorage.setItem(RECENT_TAGS_KEY, JSON.stringify(recent.slice(0, 30)));
 }
 
-/** 返回 textarea 光标在视口中的 {top, left} 坐标（dropdown 应出现在 top 下方） */
-export function getCaretCoords(ta: HTMLTextAreaElement): { top: number; left: number } {
+/**
+ * 返回光标相对于 container 元素的 {top, left} 坐标（用于 position: absolute 的 dropdown）。
+ * container 必须是 textarea 的祖先且 position 不为 static。
+ */
+export function getCaretCoords(
+  ta: HTMLTextAreaElement,
+  container: HTMLElement,
+): { top: number; left: number } {
   const pos = ta.selectionStart ?? 0;
   const computed = window.getComputedStyle(ta);
 
@@ -40,28 +46,30 @@ export function getCaretCoords(ta: HTMLTextAreaElement): { top: number; left: nu
     overflowWrap: 'break-word',
   });
 
-  // Text before caret
   const text = document.createTextNode(ta.value.slice(0, pos));
   const marker = document.createElement('span');
-  marker.textContent = '\u200b'; // zero-width space as anchor
+  marker.textContent = '\u200b';
   mirror.appendChild(text);
   mirror.appendChild(marker);
   document.body.appendChild(mirror);
 
+  const containerRect = container.getBoundingClientRect();
   const taRect = ta.getBoundingClientRect();
   const markerRect = marker.getBoundingClientRect();
   const mirrorRect = mirror.getBoundingClientRect();
   document.body.removeChild(mirror);
 
   const lineHeight = parseFloat(computed.lineHeight) || 22;
+  // caret's offset within textarea content (mirror starts at top:0 so mirrorRect.top=0)
+  const caretY = markerRect.top - mirrorRect.top;
+  const caretX = markerRect.left - mirrorRect.left;
 
-  return {
-    // position below the caret line, accounting for textarea scroll
-    top: taRect.top + (markerRect.top - mirrorRect.top) - ta.scrollTop + lineHeight,
-    // clamp so dropdown doesn't overflow right edge
-    left: Math.min(
-      taRect.left + (markerRect.left - mirrorRect.left),
-      window.innerWidth - 220,
-    ),
-  };
+  // position relative to container
+  const top = (taRect.top - containerRect.top) + caretY - ta.scrollTop + lineHeight;
+  const left = Math.min(
+    (taRect.left - containerRect.left) + caretX,
+    containerRect.width - 220,
+  );
+
+  return { top: Math.max(0, top), left: Math.max(0, left) };
 }
