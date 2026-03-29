@@ -178,7 +178,7 @@ export const HomePage = () => {
     if (filters.hasImages === true) all = all.filter((m) => m.hasImages);
     if (filters.hasImages === false) all = all.filter((m) => !m.hasImages);
     if (activeTag) {
-      all = all.filter((m) => m.tags.some((t) => t === activeTag || t.startsWith(`${activeTag}/`)));
+      all = all.filter((m) => m.tags.some((t: string) => t === activeTag || t.startsWith(`${activeTag}/`)));
     }
     const sorted = [...all];
     switch (sortMode) {

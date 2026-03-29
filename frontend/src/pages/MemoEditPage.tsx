@@ -48,17 +48,6 @@ export const MemoEditPage = () => {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    if (lightboxIndex === null || editImages.length <= 1) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') setLightboxIndex((i) => i === null ? null : (i - 1 + editImages.length) % editImages.length);
-      if (e.key === 'ArrowRight') setLightboxIndex((i) => i === null ? null : (i + 1) % editImages.length);
-      if (e.key === 'Escape') setLightboxIndex(null);
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [lightboxIndex, editImages.length]);
-
-  useEffect(() => {
     if (memo && textContent === null) {
       const urls = extractMarkdownImageUrls(memo.content);
       const text = stripMarkdownImageSyntax(memo.content)
@@ -72,6 +61,17 @@ export const MemoEditPage = () => {
 
   const editText = textContent ?? '';
   const editImages = imageUrls ?? [];
+
+  useEffect(() => {
+    if (lightboxIndex === null || editImages.length <= 1) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') setLightboxIndex((i) => i === null ? null : (i - 1 + editImages.length) % editImages.length);
+      if (e.key === 'ArrowRight') setLightboxIndex((i) => i === null ? null : (i + 1) % editImages.length);
+      if (e.key === 'Escape') setLightboxIndex(null);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [lightboxIndex, editImages.length]);
   const editVisibility = (visibility ?? memo?.visibility ?? 'public') as 'public' | 'private';
   const editDisplayDate = displayDate ?? memo?.displayDate ?? '';
 
