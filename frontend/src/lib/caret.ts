@@ -1,3 +1,15 @@
+const RECENT_TAGS_KEY = 'meno:recent-tags';
+
+export function getRecentTags(): string[] {
+  try { return JSON.parse(localStorage.getItem(RECENT_TAGS_KEY) ?? '[]'); } catch { return []; }
+}
+
+export function recordRecentTag(tag: string): void {
+  const recent = getRecentTags().filter((t) => t !== tag);
+  recent.unshift(tag);
+  localStorage.setItem(RECENT_TAGS_KEY, JSON.stringify(recent.slice(0, 30)));
+}
+
 /** 返回 textarea 光标在视口中的 {top, left} 坐标（dropdown 应出现在 top 下方） */
 export function getCaretCoords(ta: HTMLTextAreaElement): { top: number; left: number } {
   const pos = ta.selectionStart ?? 0;

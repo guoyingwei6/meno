@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { fetchAuthorMemo, fetchDashboardTags, fetchMe, updateMemo } from '../lib/api';
-import { getCaretCoords } from '../lib/caret';
+import { getCaretCoords, getRecentTags, recordRecentTag } from '../lib/caret';
 import { extractMarkdownImageUrls, stripMarkdownImageSyntax } from '../lib/content';
 import { useTheme, colors } from '../lib/theme';
 
@@ -62,7 +62,17 @@ export const MemoEditPage = () => {
     const match = before.match(/#([^\s#]*)$/);
     if (!match || !ta) { setTagDropdown(null); return; }
     const prefix = match[1];
-    const suggestions = existingTags.filter((t) => t.startsWith(prefix) && t !== prefix).slice(0, 8);
+    const recent = getRecentTags();
+    const suggestions = existingTags
+      .filter((t) => t.startsWith(prefix) && t !== prefix)
+      .sort((a, b) => {
+        const ia = recent.indexOf(a), ib = recent.indexOf(b);
+        if (ia === -1 && ib === -1) return 0;
+        if (ia === -1) return 1;
+        if (ib === -1) return -1;
+        return ia - ib;
+      })
+      .slice(0, 8);
     if (!suggestions.length) { setTagDropdown(null); return; }
     const coords = getCaretCoords(ta);
     setTagDropdown({ suggestions, ...coords });
@@ -79,6 +89,7 @@ export const MemoEditPage = () => {
     const newContent = current.slice(0, cursorPos - match[0].length) + '#' + tag + ' ' + current.slice(cursorPos);
     setTextContent(newContent);
     setTagDropdown(null);
+    recordRecentTag(tag);
     setTimeout(() => {
       const newPos = cursorPos - match[0].length + tag.length + 2;
       ta.focus();
