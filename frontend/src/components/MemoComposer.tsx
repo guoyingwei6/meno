@@ -10,6 +10,7 @@ interface MemoComposerSubmitInput {
 interface MemoComposerProps {
   defaultDisplayDate: string;
   onSubmit: (input: MemoComposerSubmitInput) => Promise<void>;
+  existingTags?: Array<{ tag: string; count: number }>;
 }
 
 interface UploadedImage {
@@ -34,15 +35,45 @@ const HighlightOverlay = ({ text, textColor }: { text: string; textColor: string
   );
 };
 
-export const MemoComposer = ({ defaultDisplayDate, onSubmit }: MemoComposerProps) => {
+export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }: MemoComposerProps) => {
   const [content, setContent] = useState('');
   const [visibility, setVisibility] = useState<'public' | 'private' | 'draft'>('public');
   const [displayDate, setDisplayDate] = useState(defaultDisplayDate);
   const [images, setImages] = useState<UploadedImage[]>([]);
+  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
   const { isDark } = useTheme();
   const c = colors(isDark);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const updateTagSuggestions = (value: string, cursorPos: number) => {
+    const before = value.slice(0, cursorPos);
+    const match = before.match(/#([^\s#]*)$/);
+    if (!match) { setTagSuggestions([]); return; }
+    const prefix = match[1];
+    const suggestions = existingTags
+      .map((t) => t.tag)
+      .filter((t) => t.startsWith(prefix) && t !== prefix)
+      .slice(0, 10);
+    setTagSuggestions(suggestions);
+  };
+
+  const applyTagSuggestion = (tag: string) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const cursorPos = ta.selectionStart;
+    const before = content.slice(0, cursorPos);
+    const match = before.match(/#([^\s#]*)$/);
+    if (!match) return;
+    const newContent = content.slice(0, cursorPos - match[0].length) + '#' + tag + ' ' + content.slice(cursorPos);
+    setContent(newContent);
+    setTagSuggestions([]);
+    setTimeout(() => {
+      const newPos = cursorPos - match[0].length + tag.length + 2;
+      ta.focus();
+      ta.setSelectionRange(newPos, newPos);
+    }, 0);
+  };
 
   const wrapSelection = (before: string, after: string) => {
     const ta = textareaRef.current;
@@ -95,7 +126,11 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit }: MemoComposerProps
           style={styles.textarea}
           placeholder="现在的想法是..."
           value={content}
-          onChange={(event) => setContent(event.target.value)}
+          onChange={(event) => {
+            setContent(event.target.value);
+            updateTagSuggestions(event.target.value, event.target.selectionStart ?? event.target.value.length);
+          }}
+          onKeyUp={(e) => updateTagSuggestions(content, (e.target as HTMLTextAreaElement).selectionStart)}
           onScroll={(e) => {
             const overlay = (e.target as HTMLElement).previousElementSibling as HTMLElement;
             if (overlay) overlay.scrollTop = (e.target as HTMLElement).scrollTop;
@@ -119,6 +154,16 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit }: MemoComposerProps
           ))}
         </div>
       ) : null}
+      {tagSuggestions.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, padding: '6px 12px', overflowX: 'auto', borderTop: `1px solid ${c.borderLight}`, scrollbarWidth: 'none' }}>
+          {tagSuggestions.map((tag) => (
+            <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
+              style={{ flexShrink: 0, border: `1px solid #3aa864`, borderRadius: 12, padding: '2px 10px', fontSize: 13, color: '#3aa864', background: 'transparent', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              #{tag}
+            </button>
+          ))}
+        </div>
+      )}
       <div style={{ ...styles.toolbar, borderTopColor: c.borderLight }}>
         <div style={styles.toolsRow}>
           <button type="button" style={{ ...styles.fmtButton, color: '#3aa864', fontWeight: 700 }} title="添加标签" onClick={() => {

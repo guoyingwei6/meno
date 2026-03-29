@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { fetchAuthorMemo, fetchMe, updateMemo } from '../lib/api';
+import { fetchAuthorMemo, fetchDashboardTags, fetchMe, updateMemo } from '../lib/api';
 import { extractMarkdownImageUrls, stripMarkdownImageSyntax } from '../lib/content';
 import { useTheme, colors } from '../lib/theme';
 
@@ -41,11 +41,46 @@ export const MemoEditPage = () => {
 
   const memo = data?.memo;
 
+  const { data: tagsData } = useQuery({
+    queryKey: ['dashboard-tags'],
+    queryFn: fetchDashboardTags,
+    enabled: Boolean(isAuthor),
+  });
+  const existingTags: string[] = (tagsData?.tags ?? []).map((t: { tag: string }) => t.tag);
+
   const [textContent, setTextContent] = useState<string | null>(null);
   const [imageUrls, setImageUrls] = useState<string[] | null>(null);
   const [visibility, setVisibility] = useState<string | null>(null);
   const [displayDate, setDisplayDate] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
+
+  const updateTagSuggestions = (value: string, cursorPos: number) => {
+    const before = value.slice(0, cursorPos);
+    const match = before.match(/#([^\s#]*)$/);
+    if (!match) { setTagSuggestions([]); return; }
+    const prefix = match[1];
+    const suggestions = existingTags.filter((t) => t.startsWith(prefix) && t !== prefix).slice(0, 10);
+    setTagSuggestions(suggestions);
+  };
+
+  const applyTagSuggestion = (tag: string) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const cursorPos = ta.selectionStart;
+    const before = (textContent ?? '').slice(0, cursorPos);
+    const match = before.match(/#([^\s#]*)$/);
+    if (!match) return;
+    const current = textContent ?? '';
+    const newContent = current.slice(0, cursorPos - match[0].length) + '#' + tag + ' ' + current.slice(cursorPos);
+    setTextContent(newContent);
+    setTagSuggestions([]);
+    setTimeout(() => {
+      const newPos = cursorPos - match[0].length + tag.length + 2;
+      ta.focus();
+      ta.setSelectionRange(newPos, newPos);
+    }, 0);
+  };
 
   useEffect(() => {
     if (memo && textContent === null) {
@@ -159,7 +194,8 @@ export const MemoEditPage = () => {
               position: 'relative', zIndex: 1,
             }}
             value={editText}
-            onChange={(e) => setTextContent(e.target.value)}
+            onChange={(e) => { setTextContent(e.target.value); updateTagSuggestions(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
+            onKeyUp={(e) => updateTagSuggestions(textContent ?? '', (e.target as HTMLTextAreaElement).selectionStart)}
             onScroll={(e) => {
               const overlay = (e.target as HTMLElement).previousElementSibling as HTMLElement;
               if (overlay) overlay.scrollTop = (e.target as HTMLElement).scrollTop;
@@ -182,6 +218,17 @@ export const MemoEditPage = () => {
           </div>
         )}
 
+        {/* Tag suggestions */}
+        {tagSuggestions.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, padding: '6px 12px', overflowX: 'auto', borderTop: `1px solid ${c.borderLight}`, scrollbarWidth: 'none' }}>
+            {tagSuggestions.map((tag) => (
+              <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
+                style={{ flexShrink: 0, border: '1px solid #3aa864', borderRadius: 12, padding: '2px 10px', fontSize: 13, color: '#3aa864', background: 'transparent', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                #{tag}
+              </button>
+            ))}
+          </div>
+        )}
         {/* Toolbar */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 12px', borderTop: `1px solid ${c.borderLight}` }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>

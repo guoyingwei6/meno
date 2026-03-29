@@ -268,7 +268,7 @@ export const HomePage = () => {
           <StatsView isAuthor={Boolean(isAuthor)} />
         ) : (
           <>
-            {isAuthor ? <MemoComposer defaultDisplayDate={todayStr} onSubmit={async (input) => {
+            {isAuthor ? <MemoComposer defaultDisplayDate={todayStr} existingTags={allTags} onSubmit={async (input) => {
               await createMemoMutation.mutateAsync(input);
             }} /> : <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后发布 memo</div>}
             {activeView === 'trash' && !isAuthor && (

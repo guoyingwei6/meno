@@ -44,19 +44,19 @@ export const buildTagTree = (tags: string[] | Array<{ tag: string; count: number
     .map(([label, childMap]) => {
       const children = Array.from(childMap.entries())
         .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => a.name.localeCompare(b.name));
+        .sort((a, b) => b.count - a.count);
       return {
         label,
         children,
         count: children.reduce((sum, c) => sum + c.count, 0),
       };
     })
-    .sort((a, b) => a.label.localeCompare(b.label));
+    .sort((a, b) => b.count - a.count);
 
   const flatList: TagTreeChild[] = Array.from(flat.entries())
     .filter(([name]) => !groups.has(name))
     .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => b.count - a.count);
 
   return { groups: groupList, flat: flatList };
 };
