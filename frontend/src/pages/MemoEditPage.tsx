@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
 import { fetchAuthorMemo, fetchDashboardTags, fetchMe, updateMemo } from '../lib/api';
 import { getCaretCoords, getRecentTags, recordRecentTag } from '../lib/caret';
@@ -190,6 +191,7 @@ export const MemoEditPage = () => {
   };
 
   return (
+    <>
     <div style={{ padding: 32, maxWidth: 880, margin: '0 auto', color: c.textPrimary }}>
       <h2 style={{ marginBottom: 16 }}>编辑 Memo</h2>
 
@@ -327,16 +329,18 @@ export const MemoEditPage = () => {
         </div>
       )}
     </div>
-    {tagDropdown && (
-      <div style={{ position: 'fixed', top: tagDropdown.top, left: tagDropdown.left, zIndex: 9999, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, maxHeight: 260, overflowY: 'auto' }}>
+    {tagDropdown && createPortal(
+      <div style={{ position: 'fixed', top: tagDropdown.top, left: tagDropdown.left, zIndex: 9999, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, maxHeight: `${5 * 40}px`, overflowY: 'auto' }}>
         {tagDropdown.suggestions.map((tag) => (
           <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
             style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             #{tag}
           </button>
         ))}
-      </div>
+      </div>,
+      document.body,
     )}
+    </>
   );
 };
 

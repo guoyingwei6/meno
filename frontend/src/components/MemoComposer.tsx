@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { getCaretCoords, getRecentTags, recordRecentTag } from '../lib/caret';
 import { useTheme, colors } from '../lib/theme';
 
@@ -131,6 +132,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   };
 
   return (
+    <>
     <section style={{ ...styles.card, background: c.cardBg, borderColor: c.borderMedium }}>
       <div ref={editorWrapRef} style={styles.editorWrap}>
         <HighlightOverlay text={content} textColor={c.textPrimary} />
@@ -240,16 +242,18 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
         </button>
       </div>
     </section>
-    {tagDropdown && (
-      <div style={{ position: 'fixed', top: tagDropdown.top, left: tagDropdown.left, zIndex: 9999, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, maxHeight: 260, overflowY: 'auto' }}>
+    {tagDropdown && createPortal(
+      <div style={{ position: 'fixed', top: tagDropdown.top, left: tagDropdown.left, zIndex: 9999, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, maxHeight: `${5 * 40}px`, overflowY: 'auto' }}>
         {tagDropdown.suggestions.map((tag) => (
           <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
             style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             #{tag}
           </button>
         ))}
-      </div>
+      </div>,
+      document.body,
     )}
+    </>
   );
 };
 
