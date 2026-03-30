@@ -11,13 +11,10 @@ export function recordRecentTag(tag: string): void {
 }
 
 /**
- * 返回光标相对于 container 元素的 {top, left} 坐标（用于 position: absolute 的 dropdown）。
- * container 必须是 textarea 的祖先且 position 不为 static。
+ * 返回光标在视口中的 {top, left} 坐标，用于 position:fixed 的 dropdown。
+ * position:fixed 天然逃出 overflow:hidden，无需传 container。
  */
-export function getCaretCoords(
-  ta: HTMLTextAreaElement,
-  container: HTMLElement,
-): { top: number; left: number } {
+export function getCaretCoords(ta: HTMLTextAreaElement): { top: number; left: number } {
   const pos = ta.selectionStart ?? 0;
   const computed = window.getComputedStyle(ta);
 
@@ -53,23 +50,20 @@ export function getCaretCoords(
   mirror.appendChild(marker);
   document.body.appendChild(mirror);
 
-  const containerRect = container.getBoundingClientRect();
   const taRect = ta.getBoundingClientRect();
   const markerRect = marker.getBoundingClientRect();
   const mirrorRect = mirror.getBoundingClientRect();
   document.body.removeChild(mirror);
 
   const lineHeight = parseFloat(computed.lineHeight) || 22;
-  // caret's offset within textarea content (mirror starts at top:0 so mirrorRect.top=0)
-  const caretY = markerRect.top - mirrorRect.top;
-  const caretX = markerRect.left - mirrorRect.left;
+  // mirrorRect.top=0, mirrorRect.left=-9999 (fixed)
+  // markerRect.top = caret's Y offset in content
+  // markerRect.left - mirrorRect.left = caret's X offset in content
+  const caretY = markerRect.top - mirrorRect.top;   // = markerRect.top
+  const caretX = markerRect.left - mirrorRect.left; // = markerRect.left + 9999
 
-  // position relative to container
-  const top = (taRect.top - containerRect.top) + caretY - ta.scrollTop + lineHeight;
-  const left = Math.min(
-    (taRect.left - containerRect.left) + caretX,
-    containerRect.width - 220,
-  );
+  const top = taRect.top + caretY - ta.scrollTop + lineHeight;
+  const left = Math.min(taRect.left + caretX, window.innerWidth - 240);
 
   return { top: Math.max(0, top), left: Math.max(0, left) };
 }

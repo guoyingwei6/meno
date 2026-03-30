@@ -59,10 +59,9 @@ export const MemoEditPage = () => {
 
   const updateTagSuggestions = (value: string, cursorPos: number) => {
     const ta = textareaRef.current;
-    const container = editorWrapRef.current;
     const before = value.slice(0, cursorPos);
     const match = before.match(/#([^\s#]*)$/);
-    if (!match || !ta || !container) { setTagDropdown(null); return; }
+    if (!match || !ta) { setTagDropdown(null); return; }
     const prefix = match[1];
     const recent = getRecentTags();
     const suggestions = existingTags
@@ -73,10 +72,9 @@ export const MemoEditPage = () => {
         if (ia === -1) return 1;
         if (ib === -1) return -1;
         return ia - ib;
-      })
-      .slice(0, 8);
+      });
     if (!suggestions.length) { setTagDropdown(null); return; }
-    const coords = getCaretCoords(ta, container);
+    const coords = getCaretCoords(ta);
     setTagDropdown({ suggestions, ...coords });
   };
 
@@ -220,16 +218,6 @@ export const MemoEditPage = () => {
               updateTagSuggestions(textContent ?? '', textareaRef.current?.selectionStart ?? 0);
             }}
           />
-          {tagDropdown && (
-            <div style={{ position: 'absolute', top: tagDropdown.top, left: tagDropdown.left, zIndex: 200, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, overflow: 'hidden' }}>
-              {tagDropdown.suggestions.map((tag) => (
-                <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  #{tag}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* Image thumbnails */}
@@ -339,6 +327,16 @@ export const MemoEditPage = () => {
         </div>
       )}
     </div>
+    {tagDropdown && (
+      <div style={{ position: 'fixed', top: tagDropdown.top, left: tagDropdown.left, zIndex: 9999, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, maxHeight: 260, overflowY: 'auto' }}>
+        {tagDropdown.suggestions.map((tag) => (
+          <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            #{tag}
+          </button>
+        ))}
+      </div>
+    )}
   );
 };
 
