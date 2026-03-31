@@ -13,10 +13,45 @@ export const AiConfigModal = ({ onClose }: AiConfigModalProps) => {
   const [url, setUrl] = useState(existing?.url ?? '');
   const [apiKey, setApiKey] = useState(existing?.apiKey ?? '');
   const [model, setModel] = useState(existing?.model ?? '');
+  const [verifyStatus, setVerifyStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
+  const [verifyMsg, setVerifyMsg] = useState('');
 
   const handleSave = () => {
     setAiConfig({ url: url.trim(), apiKey: apiKey.trim(), model: model.trim() });
     onClose();
+  };
+
+  const handleVerify = async () => {
+    const u = url.trim();
+    const k = apiKey.trim();
+    const m = model.trim();
+    if (!u || !k || !m) {
+      setVerifyStatus('error');
+      setVerifyMsg('请填写所有字段');
+      return;
+    }
+    setVerifyStatus('loading');
+    setVerifyMsg('');
+    try {
+      const resp = await fetch(`${u}/chat/completions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${k}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: m,
+          messages: [{ role: 'user', content: 'Hi' }],
+          max_tokens: 1,
+        }),
+      });
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        throw new Error(`HTTP ${resp.status}${text ? ': ' + text.slice(0, 80) : ''}`);
+      }
+      setVerifyStatus('ok');
+      setVerifyMsg('验证成功');
+    } catch (e) {
+      setVerifyStatus('error');
+      setVerifyMsg(e instanceof Error ? e.message : '未知错误');
+    }
   };
 
   return (
@@ -53,15 +88,29 @@ export const AiConfigModal = ({ onClose }: AiConfigModalProps) => {
           placeholder="gpt-4o-mini"
         />
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-          <button type="button" onClick={onClose}
-            style={{ border: `1px solid ${c.borderMedium}`, background: c.cardBg, color: c.textPrimary, borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13 }}>
-            取消
-          </button>
-          <button type="button" onClick={handleSave}
-            style={{ border: 'none', background: c.accent, color: '#fff', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-            保存
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <button type="button" onClick={handleVerify} disabled={verifyStatus === 'loading'}
+              style={{ border: `1px solid ${c.borderMedium}`, background: c.cardBg, color: c.textSecondary, borderRadius: 8, padding: '8px 14px', cursor: verifyStatus === 'loading' ? 'default' : 'pointer', fontSize: 13, whiteSpace: 'nowrap', opacity: verifyStatus === 'loading' ? 0.6 : 1 }}>
+              {verifyStatus === 'loading' ? '验证中...' : '验证'}
+            </button>
+            {verifyStatus === 'ok' && (
+              <span style={{ fontSize: 13, color: '#3aa864', fontWeight: 500 }}>✓ {verifyMsg}</span>
+            )}
+            {verifyStatus === 'error' && (
+              <span style={{ fontSize: 12, color: '#e53e3e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }} title={verifyMsg}>✗ {verifyMsg}</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button type="button" onClick={onClose}
+              style={{ border: `1px solid ${c.borderMedium}`, background: c.cardBg, color: c.textPrimary, borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13 }}>
+              取消
+            </button>
+            <button type="button" onClick={handleSave}
+              style={{ border: 'none', background: c.accent, color: '#fff', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+              保存
+            </button>
+          </div>
         </div>
         <p style={{ margin: '12px 0 0', fontSize: 11, color: c.textMuted }}>
           配置保存于本地 localStorage，不上传服务器
