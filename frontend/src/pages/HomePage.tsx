@@ -7,6 +7,7 @@ import { TimelineHeader } from '../components/TimelineHeader';
 import type { SortMode } from '../components/TimelineHeader';
 import { TopBar } from '../components/TopBar';
 import { StatsView } from '../components/StatsView';
+import { AiConfigModal } from '../components/AiConfigModal';
 import { ImportExportModal } from '../components/ImportExportModal';
 import { createMemo, deleteMemo, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, restoreMemo, updateMemo } from '../lib/api';
 import type { CalendarResponse, DashboardStatsResponse, MeResponse, PublicStatsResponse } from '../lib/api';
@@ -40,6 +41,7 @@ export const HomePage = () => {
   const [filters, setFilters] = useState<MemoFilters>({});
   const [sortMode, setSortMode] = useState<SortMode>('display-desc');
   const [showImportExport, setShowImportExport] = useState(false);
+  const [showAiConfig, setShowAiConfig] = useState(false);
 
   // Sync sidebar default when crossing breakpoint
   useEffect(() => {
@@ -231,6 +233,9 @@ export const HomePage = () => {
           }}
         />
       )}
+      {showAiConfig && (
+        <AiConfigModal onClose={() => setShowAiConfig(false)} />
+      )}
       {isMobile && sidebarOpen && (
         <div style={{ ...styles.overlay, background: c.overlay }} onClick={() => setSidebarOpen(false)} />
       )}
@@ -263,6 +268,7 @@ export const HomePage = () => {
           onToggleSidebar={() => setSidebarOpen((v) => !v)}
           onRefresh={async () => { await queryClient.refetchQueries(); }}
           onImportExport={() => setShowImportExport(true)}
+          onAiConfig={() => setShowAiConfig(true)}
         />
         {activeView === 'stats' ? (
           <StatsView isAuthor={Boolean(isAuthor)} />
@@ -285,6 +291,7 @@ export const HomePage = () => {
               memos={memos}
               isAuthor={Boolean(isAuthor)}
               isTrash={activeView === 'trash'}
+              allTags={allTags.map((t) => t.tag)}
               onOpenMemo={(memo) => window.location.assign(`/memos/${memo.slug}`)}
               onOpenTag={(tag) => window.location.assign(`/tags/${tag}`)}
               onEditMemo={(memo) => window.location.assign(`/memos/${memo.slug}/edit`)}
@@ -296,6 +303,9 @@ export const HomePage = () => {
               }}
               onChangeVisibility={(memo, visibility) => {
                 updateMemoMutation.mutate({ id: memo.id, input: { visibility } });
+              }}
+              onFillTagsMemo={(id, newContent) => {
+                updateMemoMutation.mutate({ id, input: { content: newContent } });
               }}
             />
           </>
