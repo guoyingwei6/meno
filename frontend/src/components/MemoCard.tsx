@@ -4,6 +4,7 @@ import { extractMarkdownImageUrls, stripMarkdownImageSyntax, stripTagSyntax } fr
 import { useEffect, useState } from 'react';
 import type { MemoSummary } from '../types/shared';
 import { useTheme, colors } from '../lib/theme';
+import { getAiConfig } from '../lib/ai-config';
 
 interface MemoCardProps {
   memo: MemoSummary;
@@ -15,6 +16,8 @@ interface MemoCardProps {
   onRestore?: (memo: MemoSummary) => void;
   onChangeVisibility?: (memo: MemoSummary, visibility: 'public' | 'private') => void;
   onDelete?: (memo: MemoSummary) => void;
+  allTags?: string[];
+  onFillTags?: (id: number, newContent: string) => void;
 }
 
 const formatTime = (iso: string) => {
@@ -27,13 +30,16 @@ const countWords = (text: string) => {
   return cleaned.length;
 };
 
-export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, onRestore, onChangeVisibility, onDelete }: MemoCardProps) => {
+export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, onRestore, onChangeVisibility, onDelete, allTags, onFillTags }: MemoCardProps) => {
   const { isDark } = useTheme();
   const c = colors(isDark);
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [fillLoading, setFillLoading] = useState(false);
+  const [suggestedTags, setSuggestedTags] = useState<string[] | null>(null);
+  const [checkedTags, setCheckedTags] = useState<string[]>([]);
   const imageUrls = extractMarkdownImageUrls(memo.content);
   const contentText = stripTagSyntax(stripMarkdownImageSyntax(memo.content));
   const isLong = contentText.length > 200;
@@ -50,12 +56,82 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
     return () => window.removeEventListener('keydown', handler);
   }, [lightboxIndex, imageUrls.length]);
 
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 2000);
+  };
+
   const handleShare = () => {
     const url = `${window.location.origin}/memos/${memo.slug}`;
     navigator.clipboard.writeText(url);
-    setCopied(true);
     setMenuOpen(false);
-    setTimeout(() => setCopied(false), 2000);
+    showToast('链接已复制');
+  };
+
+  const handleFillTags = async () => {
+    const config = getAiConfig();
+    if (!config) {
+      setMenuOpen(false);
+      showToast('请先配置 AI');
+      return;
+    }
+    if (!allTags?.length) {
+      setMenuOpen(false);
+      showToast('暂无可用标签，请先创建标签');
+      return;
+    }
+    setFillLoading(true);
+    try {
+      const resp = await fetch(`${config.url}/chat/completions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: config.model,
+          messages: [
+            {
+              role: 'system',
+              content: '你是标签推荐助手。只能从用户提供的标签列表中选择，不得新造标签。返回格式为 JSON 数组，如 ["tag1","tag2"]，不要包含其他内容。',
+            },
+            {
+              role: 'user',
+              content: `笔记内容：\n${memo.content}\n\n可用标签列表：${allTags.join(', ')}\n\n请从可用标签中选出适合此笔记的标签。`,
+            },
+          ],
+        }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      const raw: string = data?.choices?.[0]?.message?.content ?? '';
+      let tags: string[] = [];
+      try {
+        tags = JSON.parse(raw);
+      } catch {
+        const match = raw.match(/\[[\s\S]*?\]/);
+        if (match) tags = JSON.parse(match[0]);
+        else throw new Error('AI 返回格式无法解析');
+      }
+      if (!Array.isArray(tags)) throw new Error('AI 返回格式无法解析');
+      const newTags = tags.filter((t: string) => !memo.tags.includes(t));
+      if (newTags.length === 0) {
+        setMenuOpen(false);
+        showToast('未找到新的匹配标签');
+      } else {
+        setMenuOpen(false);
+        setSuggestedTags(newTags);
+        setCheckedTags(newTags);
+      }
+    } catch (e) {
+      showToast(`AI 调用失败: ${e instanceof Error ? e.message : '未知错误'}`);
+    } finally {
+      setFillLoading(false);
+    }
+  };
+
+  const handleApplyTags = () => {
+    if (checkedTags.length === 0) { setSuggestedTags(null); return; }
+    const newContent = checkedTags.map((t) => `#${t}`).join(' ') + '\n' + memo.content;
+    onFillTags?.(memo.id, newContent);
+    setSuggestedTags(null);
   };
 
   return (
@@ -63,7 +139,7 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
       <div style={styles.header}>
         <span style={{ ...styles.date, color: c.textMuted }}>{memo.displayDate}</span>
         <div style={styles.headerRight}>
-          {copied ? <span style={styles.copiedHint}>链接已复制</span> : null}
+          {toastMsg ? <span style={styles.copiedHint}>{toastMsg}</span> : null}
           <div style={styles.menuWrap}>
             <button
               type="button"
@@ -82,6 +158,15 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
                 ) : isAuthor ? (
                   <>
                     <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label="编辑" onClick={() => { setMenuOpen(false); onEdit?.(memo); }}>编辑</button>
+                    <button
+                      type="button"
+                      style={{ ...styles.menuItem, color: fillLoading ? c.textMuted : '#3aa864' }}
+                      aria-label={fillLoading ? '分析中...' : '填充标签（AI）'}
+                      disabled={fillLoading}
+                      onClick={handleFillTags}
+                    >
+                      {fillLoading ? '分析中...' : '填充标签（AI）'}
+                    </button>
                     {memo.visibility === 'public' ? (
                       <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label="设为私密" onClick={() => { setMenuOpen(false); onChangeVisibility?.(memo, 'private'); }}>设为私密</button>
                     ) : (
@@ -181,6 +266,43 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
           {imageUrls.length > 1 && (
             <span style={styles.lightboxCounter}>{lightboxIndex + 1} / {imageUrls.length}</span>
           )}
+        </div>
+      ) : null}
+      {suggestedTags !== null ? (
+        <div style={styles.lightbox} onClick={() => setSuggestedTags(null)}>
+          <div
+            style={{ ...styles.confirmModal, background: c.cardBg }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 12px', fontSize: 15, color: c.textPrimary }}>AI 建议添加以下标签</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+              {suggestedTags.map((tag) => (
+                <label key={tag} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: c.textPrimary }}>
+                  <input
+                    type="checkbox"
+                    aria-label={`#${tag}`}
+                    checked={checkedTags.includes(tag)}
+                    onChange={(e) => {
+                      setCheckedTags((prev) =>
+                        e.target.checked ? [...prev, tag] : prev.filter((t) => t !== tag),
+                      );
+                    }}
+                  />
+                  <span style={{ color: '#3aa864', fontWeight: 500 }}>#{tag}</span>
+                </label>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setSuggestedTags(null)}
+                style={{ border: `1px solid ${c.borderMedium}`, background: c.cardBg, color: c.textPrimary, borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}>
+                取消
+              </button>
+              <button type="button" aria-label="应用" onClick={handleApplyTags}
+                style={{ border: 'none', background: '#3aa864', color: '#fff', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                应用
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </article>
@@ -371,5 +493,13 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'rgba(0,0,0,0.4)',
     padding: '3px 10px',
     borderRadius: 12,
+  },
+  confirmModal: {
+    borderRadius: 12,
+    padding: 24,
+    minWidth: 260,
+    maxWidth: 340,
+    boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+    cursor: 'default',
   },
 };
