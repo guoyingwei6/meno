@@ -17,6 +17,7 @@
 - 侧边栏标签树，分组折叠/展开
 - 点击标签名筛选笔记，点击箭头折叠子标签
 - 选中标签整行绿色高亮
+- **AI 填充标签**：在笔记菜单中一键调用 OpenAI 兼容 API，从现有标签库自动匹配标签，弹窗确认后前置写入笔记
 
 ### 筛选
 - 公开/私密、有/无标签、有/无图片 三组筛选条件
@@ -28,6 +29,11 @@
 - 桌面端：侧边栏 + 居中内容区
 - 移动端：侧边栏收起，点击汉堡菜单滑出，点击遮罩关闭
 - 刷新按钮强制同步多端数据
+
+### AI
+- TopBar 魔杖按钮配置 AI（Base URL / API Key / Model），兼容 OpenAI 接口，配置存于本地 localStorage
+- 支持填写完整 endpoint URL 或 Base URL 两种格式
+- 内置验证按钮，一键测试配置是否可用
 
 ### API
 - Quick API：通过 `X-API-Key` 认证，支持 POST 创建笔记和上传图片
@@ -69,8 +75,8 @@ npx wrangler r2 bucket create meno-assets
 # 设置 API_TOKEN secret
 echo "your-token" | npx wrangler secret put API_TOKEN
 
-# 部署 Worker
-npx wrangler deploy
+# 部署 Worker（本地使用含真实配置的 wrangler.local.toml）
+npx wrangler deploy --config wrangler.local.toml
 
 # 部署前端
 cd ../frontend
