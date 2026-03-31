@@ -9,6 +9,7 @@ interface TopBarProps {
   onToggleSidebar?: () => void;
   onRefresh?: () => Promise<void> | void;
   onImportExport?: () => void;
+  onAiConfig?: () => void;
 }
 
 const ThemeToggle = () => {
@@ -22,7 +23,7 @@ const ThemeToggle = () => {
   );
 };
 
-export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, onRefresh, onImportExport }: TopBarProps) => {
+export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, onRefresh, onImportExport, onAiConfig }: TopBarProps) => {
   const { isDark } = useTheme();
   const c = colors(isDark);
   const [spinning, setSpinning] = useState(false);
@@ -58,6 +59,17 @@ export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, 
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </button>
+        )}
+        {authenticated && (
+          <button type="button" style={styles.iconButton} onClick={onAiConfig} aria-label="AI 配置" title="AI 配置">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c.textTertiary} strokeWidth="2">
+              <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72" />
+              <path d="m14 7 3 3" />
+              <path d="M5 6v4" /><path d="M19 14v4" />
+              <path d="M10 2v2" /><path d="M7 8H3" />
+              <path d="M21 16h-4" /><path d="M11 3H9" />
             </svg>
           </button>
         )}
