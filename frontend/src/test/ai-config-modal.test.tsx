@@ -30,6 +30,9 @@ describe('AiConfigModal', () => {
     fireEvent.change(screen.getByPlaceholderText('https://api.openai.com/v1'), {
       target: { value: 'https://api.openai.com/v1' },
     });
+    fireEvent.change(screen.getByPlaceholderText('sk-...'), {
+      target: { value: 'sk-testkey' },
+    });
     fireEvent.change(screen.getByPlaceholderText('gpt-4o-mini'), {
       target: { value: 'gpt-4o-mini' },
     });
@@ -37,6 +40,7 @@ describe('AiConfigModal', () => {
     expect(onClose).toHaveBeenCalled();
     const saved = JSON.parse(localStorage.getItem('meno_ai_config') ?? '{}');
     expect(saved.url).toBe('https://api.openai.com/v1');
+    expect(saved.apiKey).toBe('sk-testkey');
     expect(saved.model).toBe('gpt-4o-mini');
   });
 
