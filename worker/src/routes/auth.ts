@@ -77,7 +77,7 @@ authRoutes.get('/auth/github/callback', async (c) => {
     expiresAt,
   });
 
-  c.header('Set-Cookie', `meno_session=${sessionId}; Path=/; HttpOnly; SameSite=None; Secure`);
+  c.header('Set-Cookie', `meno_session=${sessionId}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=604800`);
   return c.redirect(`${c.env.APP_ORIGIN}/`, 302);
 });
 
