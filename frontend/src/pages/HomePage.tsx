@@ -94,7 +94,7 @@ export const HomePage = () => {
       return fetchPublicMemos(undefined, selectedDate ?? undefined);
     },
     enabled: !isLoadingMe,
-    placeholderData: (prev: unknown) => prev,
+    placeholderData: (prev) => prev,
   });
 
   const { data: tagsData } = useQuery({
