@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { getAiConfig, setAiConfig } from '../lib/ai-config';
+import { getAiConfig, setAiConfig, chatCompletionsUrl } from '../lib/ai-config';
 import { useTheme, colors } from '../lib/theme';
 
 interface AiConfigModalProps {
@@ -33,7 +33,7 @@ export const AiConfigModal = ({ onClose }: AiConfigModalProps) => {
     setVerifyStatus('loading');
     setVerifyMsg('');
     try {
-      const resp = await fetch(`${u}/chat/completions`, {
+      const resp = await fetch(chatCompletionsUrl(u), {
         method: 'POST',
         headers: { Authorization: `Bearer ${k}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({

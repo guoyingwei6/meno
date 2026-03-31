@@ -19,3 +19,10 @@ export const getAiConfig = (): AiConfig | null => {
 export const setAiConfig = (config: AiConfig): void => {
   localStorage.setItem(KEY, JSON.stringify(config));
 };
+
+/** 拼接 chat/completions 端点，兼容用户填完整 URL 的情况 */
+export const chatCompletionsUrl = (baseUrl: string): string => {
+  const u = baseUrl.replace(/#.*$/, '').replace(/\/+$/, '');
+  if (u.endsWith('/chat/completions')) return u;
+  return `${u}/chat/completions`;
+};

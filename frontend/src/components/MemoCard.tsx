@@ -4,7 +4,7 @@ import { extractMarkdownImageUrls, stripMarkdownImageSyntax, stripTagSyntax } fr
 import { useEffect, useState } from 'react';
 import type { MemoSummary } from '../types/shared';
 import { useTheme, colors } from '../lib/theme';
-import { getAiConfig } from '../lib/ai-config';
+import { getAiConfig, chatCompletionsUrl } from '../lib/ai-config';
 
 interface MemoCardProps {
   memo: MemoSummary;
@@ -82,7 +82,7 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
     }
     setFillLoading(true);
     try {
-      const resp = await fetch(`${config.url}/chat/completions`, {
+      const resp = await fetch(chatCompletionsUrl(config.url), {
         method: 'POST',
         headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
