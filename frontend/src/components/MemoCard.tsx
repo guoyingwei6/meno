@@ -1,7 +1,7 @@
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import { extractMarkdownImageUrls, stripMarkdownImageSyntax, stripTagSyntax } from '../lib/content';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { MemoSummary } from '../types/shared';
 import { useTheme, colors } from '../lib/theme';
 import { getAiConfig, chatCompletionsUrl } from '../lib/ai-config';
@@ -36,6 +36,7 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
   const c = colors(isDark);
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [fillLoading, setFillLoading] = useState(false);
@@ -56,6 +57,17 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [lightboxIndex, imageUrls.length]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -141,7 +153,7 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
         <span style={{ ...styles.date, color: c.textMuted }}>{memo.pinnedAt && '📌 '}{memo.displayDate}</span>
         <div style={styles.headerRight}>
           {toastMsg ? <span style={styles.copiedHint}>{toastMsg}</span> : null}
-          <div style={styles.menuWrap}>
+          <div ref={menuRef} style={styles.menuWrap}>
             <button
               type="button"
               aria-label="更多操作"
