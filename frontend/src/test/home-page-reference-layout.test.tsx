@@ -53,6 +53,7 @@ beforeEach(() => {
                 updatedAt: '2026-02-21T15:33:00.000Z',
                 publishedAt: '2026-02-21T15:33:00.000Z',
                 deletedAt: null,
+      pinnedAt: null,
                 previousVisibility: null,
                 hasImages: true,
                 imageCount: 1,

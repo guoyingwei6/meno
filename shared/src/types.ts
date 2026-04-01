@@ -11,6 +11,7 @@ export interface MemoSummary {
   updatedAt: string;
   publishedAt: string | null;
   deletedAt: string | null;
+  pinnedAt: string | null;
   previousVisibility: MemoVisibility | null;
   hasImages: boolean;
   imageCount: number;

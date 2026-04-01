@@ -34,6 +34,7 @@ describe('memo trash flow', () => {
       expect.objectContaining({
         id: 1,
         deletedAt: null,
+      pinnedAt: null,
         visibility: 'public',
       }),
     );

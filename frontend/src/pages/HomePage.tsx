@@ -9,7 +9,7 @@ import { TopBar } from '../components/TopBar';
 import { StatsView } from '../components/StatsView';
 import { AiConfigModal } from '../components/AiConfigModal';
 import { ImportExportModal } from '../components/ImportExportModal';
-import { createMemo, deleteMemo, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, restoreMemo, updateMemo } from '../lib/api';
+import { createMemo, deleteMemo, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, pinMemo as pinMemoApi, restoreMemo, unpinMemo as unpinMemoApi, updateMemo } from '../lib/api';
 import type { CalendarResponse, DashboardStatsResponse, MeResponse, PublicStatsResponse } from '../lib/api';
 import { buildTagTree } from '../lib/tag-tree';
 import type { MemoFilters } from '../components/SidebarShell';
@@ -158,6 +158,15 @@ export const HomePage = () => {
     },
   });
 
+  const pinMutation = useMutation({
+    mutationFn: (id: number) => pinMemoApi(id),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['dashboard-memos'] }); },
+  });
+  const unpinMutation = useMutation({
+    mutationFn: (id: number) => unpinMemoApi(id),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['dashboard-memos'] }); },
+  });
+
   const todayMonthDay = new Date().toISOString().slice(5, 10);
   const todayYear = new Date().getFullYear().toString();
 
@@ -202,6 +211,13 @@ export const HomePage = () => {
       case 'updated-asc':
         sorted.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
         break;
+    }
+    if (activeView === 'all' && !activeTag) {
+      sorted.sort((a, b) => {
+        const ap = a.pinnedAt ? 1 : 0;
+        const bp = b.pinnedAt ? 1 : 0;
+        return bp - ap;
+      });
     }
     return sorted;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -306,6 +322,13 @@ export const HomePage = () => {
               }}
               onFillTagsMemo={(id, newContent) => {
                 updateMemoMutation.mutate({ id, input: { content: newContent } });
+              }}
+              onPinMemo={(memo) => {
+                if (memo.pinnedAt) {
+                  unpinMutation.mutate(memo.id);
+                } else {
+                  pinMutation.mutate(memo.id);
+                }
               }}
             />
           </>

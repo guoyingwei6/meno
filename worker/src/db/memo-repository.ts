@@ -24,6 +24,7 @@ const mapMemoRow = (row: Record<string, unknown>): MemoSummary => ({
   updatedAt: String(row.updated_at),
   publishedAt: row.published_at ? String(row.published_at) : null,
   deletedAt: row.deleted_at ? String(row.deleted_at) : null,
+  pinnedAt: row.pinned_at ? String(row.pinned_at) : null,
   previousVisibility: row.previous_visibility ? (String(row.previous_visibility) as MemoVisibility) : null,
   hasImages: Boolean(row.has_images),
   imageCount: Number(row.image_count),
@@ -103,7 +104,7 @@ export const listPublicMemos = async (db: D1Database, query: { tag?: string; dat
   }
 
   const { results } = await db
-    .prepare(`SELECT * FROM memos WHERE ${clauses.join(' AND ')} ORDER BY display_date DESC, created_at DESC`)
+    .prepare(`SELECT * FROM memos WHERE ${clauses.join(' AND ')} ORDER BY pinned_at IS NULL ASC, pinned_at DESC, display_date DESC, created_at DESC`)
     .bind(...params)
     .all();
 
@@ -177,6 +178,23 @@ export const updateMemo = async (
   const row = await db.prepare('SELECT * FROM memos WHERE id = ? LIMIT 1').bind(id).first<Record<string, unknown>>();
   if (!row) return null;
 
+  const [memo] = await attachTags(db, [mapMemoRow(row)]);
+  return { ...memo, assets: [] };
+};
+
+export const pinMemo = async (db: D1Database, id: number): Promise<MemoDetail | null> => {
+  const now = new Date().toISOString();
+  await db.prepare('UPDATE memos SET pinned_at = ? WHERE id = ? AND deleted_at IS NULL').bind(now, id).run();
+  const row = await db.prepare('SELECT * FROM memos WHERE id = ? LIMIT 1').bind(id).first<Record<string, unknown>>();
+  if (!row) return null;
+  const [memo] = await attachTags(db, [mapMemoRow(row)]);
+  return { ...memo, assets: [] };
+};
+
+export const unpinMemo = async (db: D1Database, id: number): Promise<MemoDetail | null> => {
+  await db.prepare('UPDATE memos SET pinned_at = NULL WHERE id = ? AND deleted_at IS NULL').bind(id).run();
+  const row = await db.prepare('SELECT * FROM memos WHERE id = ? LIMIT 1').bind(id).first<Record<string, unknown>>();
+  if (!row) return null;
   const [memo] = await attachTags(db, [mapMemoRow(row)]);
   return { ...memo, assets: [] };
 };
@@ -381,7 +399,7 @@ export const listAuthorMemos = async (db: D1Database, query: AuthorViewQuery): P
   }
 
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const { results } = await db.prepare(`SELECT * FROM memos ${where} ORDER BY display_date DESC, created_at DESC`).bind(...params).all();
+  const { results } = await db.prepare(`SELECT * FROM memos ${where} ORDER BY pinned_at IS NULL ASC, pinned_at DESC, display_date DESC, created_at DESC`).bind(...params).all();
 
   return attachTags(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
 };

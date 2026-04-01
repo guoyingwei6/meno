@@ -18,6 +18,7 @@ const mockResponse: PublicMemosResponse = {
       updatedAt: '2026-03-24T12:30:00.000Z',
       publishedAt: '2026-03-24T12:30:00.000Z',
       deletedAt: null,
+      pinnedAt: null,
       previousVisibility: null,
       hasImages: false,
       imageCount: 0,

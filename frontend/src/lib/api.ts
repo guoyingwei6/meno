@@ -264,6 +264,24 @@ export const restoreMemo = async (id: number): Promise<{ memo: MemoDetail }> => 
   return response.json();
 };
 
+export const pinMemo = async (id: number): Promise<{ memo: MemoDetail }> => {
+  const response = await fetch(withApiBase(`/api/memos/${id}/pin`), {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to pin memo');
+  return response.json();
+};
+
+export const unpinMemo = async (id: number): Promise<{ memo: MemoDetail }> => {
+  const response = await fetch(withApiBase(`/api/memos/${id}/unpin`), {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to unpin memo');
+  return response.json();
+};
+
 export const deleteMemo = async (id: number): Promise<{ success: boolean }> => {
   const response = await fetch(withApiBase(`/api/memos/${id}`), {
     method: 'DELETE',

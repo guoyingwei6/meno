@@ -1,0 +1,1 @@
+ALTER TABLE memos ADD COLUMN pinned_at TEXT;
