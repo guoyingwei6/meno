@@ -54,6 +54,18 @@ export const fetchPublicMemos = async (tag?: string, date?: string): Promise<Pub
   return response.json();
 };
 
+export const searchPublicMemos = async (q: string): Promise<PublicMemosResponse> => {
+  const response = await fetch(withApiBase(`/api/public/memos/search?q=${encodeURIComponent(q)}`));
+  if (!response.ok) throw new Error('Failed to search memos');
+  return response.json();
+};
+
+export const searchDashboardMemos = async (q: string): Promise<{ memos: MemoSummary[] }> => {
+  const response = await fetch(withApiBase(`/api/dashboard/memos/search?q=${encodeURIComponent(q)}`), { credentials: 'include' });
+  if (!response.ok) throw new Error('Failed to search memos');
+  return response.json();
+};
+
 export const fetchPublicMemo = async (slug: string): Promise<PublicMemoResponse> => {
   const response = await fetch(withApiBase(`/api/public/memos/${slug}`));
 

@@ -10,6 +10,8 @@ interface TopBarProps {
   onRefresh?: () => Promise<void> | void;
   onImportExport?: () => void;
   onAiConfig?: () => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
 }
 
 const ThemeToggle = () => {
@@ -23,7 +25,7 @@ const ThemeToggle = () => {
   );
 };
 
-export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, onRefresh, onImportExport, onAiConfig }: TopBarProps) => {
+export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, onRefresh, onImportExport, onAiConfig, searchQuery = '', onSearchChange }: TopBarProps) => {
   const { isDark } = useTheme();
   const c = colors(isDark);
   const [spinning, setSpinning] = useState(false);
@@ -75,6 +77,25 @@ export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, 
         )}
       </div>
       <div style={styles.actions}>
+        <div style={{ ...styles.searchWrap, background: c.inputBg, borderColor: c.border }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={c.textMuted} strokeWidth="2" style={{ flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="text"
+            placeholder="搜索笔记..."
+            value={searchQuery}
+            onChange={(e) => onSearchChange?.(e.target.value)}
+            style={{ ...styles.searchInput, color: c.textPrimary }}
+          />
+          {searchQuery && (
+            <button type="button" style={styles.searchClear} onClick={() => onSearchChange?.('')} aria-label="清除搜索">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={c.textMuted} strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
+        </div>
         {!authenticated && (
           <button type="button" style={styles.authButtonPrimary} onClick={() => window.location.assign(loginUrl())}>GitHub 登录</button>
         )}
@@ -87,7 +108,10 @@ const styles: Record<string, React.CSSProperties> = {
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 16 },
   leftActions: { display: 'flex', alignItems: 'center', gap: 4 },
   iconButton: { border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6 },
-  actions: { display: 'flex', alignItems: 'center', gap: 10 },
+  actions: { display: 'flex', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'flex-end' },
+  searchWrap: { display: 'flex', alignItems: 'center', gap: 6, border: '1px solid', borderRadius: 8, padding: '5px 10px', maxWidth: 240, flex: 1 },
+  searchInput: { border: 'none', outline: 'none', background: 'transparent', fontSize: 13, width: '100%', lineHeight: 1.4 },
+  searchClear: { border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' },
   identity: { fontWeight: 600, fontSize: 14 },
   authButtonPrimary: { border: 'none', borderRadius: 8, padding: '8px 14px', background: '#111', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13 },
   authButtonSecondary: { border: '1px solid #e0e0e0', borderRadius: 8, padding: '6px 12px', background: '#fff', cursor: 'pointer', fontSize: 13 },

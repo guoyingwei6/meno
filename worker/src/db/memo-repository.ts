@@ -111,6 +111,24 @@ export const listPublicMemos = async (db: D1Database, query: { tag?: string; dat
   return attachTags(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
 };
 
+export const searchPublicMemos = async (db: D1Database, q: string): Promise<MemoSummary[]> => {
+  const pattern = `%${q}%`;
+  const { results } = await db
+    .prepare('SELECT * FROM memos WHERE visibility = ? AND deleted_at IS NULL AND content LIKE ? ORDER BY display_date DESC, created_at DESC LIMIT 50')
+    .bind('public', pattern)
+    .all();
+  return attachTags(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
+};
+
+export const searchAuthorMemos = async (db: D1Database, q: string): Promise<MemoSummary[]> => {
+  const pattern = `%${q}%`;
+  const { results } = await db
+    .prepare('SELECT * FROM memos WHERE deleted_at IS NULL AND content LIKE ? ORDER BY display_date DESC, created_at DESC LIMIT 50')
+    .bind(pattern)
+    .all();
+  return attachTags(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
+};
+
 export const getPublicMemoBySlug = async (db: D1Database, slug: string): Promise<MemoDetail | null> => {
   const row = await db
     .prepare('SELECT * FROM memos WHERE slug = ? AND visibility = ? AND deleted_at IS NULL LIMIT 1')

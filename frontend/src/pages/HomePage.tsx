@@ -9,7 +9,7 @@ import { TopBar } from '../components/TopBar';
 import { StatsView } from '../components/StatsView';
 import { AiConfigModal } from '../components/AiConfigModal';
 import { ImportExportModal } from '../components/ImportExportModal';
-import { createMemo, deleteMemo, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, pinMemo as pinMemoApi, restoreMemo, unpinMemo as unpinMemoApi, updateMemo } from '../lib/api';
+import { createMemo, deleteMemo, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, pinMemo as pinMemoApi, restoreMemo, searchDashboardMemos, searchPublicMemos, unpinMemo as unpinMemoApi, updateMemo } from '../lib/api';
 import type { CalendarResponse, DashboardStatsResponse, MeResponse, PublicStatsResponse } from '../lib/api';
 import { buildTagTree } from '../lib/tag-tree';
 import type { MemoFilters } from '../components/SidebarShell';
@@ -42,11 +42,19 @@ export const HomePage = () => {
   const [sortMode, setSortMode] = useState<SortMode>('display-desc');
   const [showImportExport, setShowImportExport] = useState(false);
   const [showAiConfig, setShowAiConfig] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   // Sync sidebar default when crossing breakpoint
   useEffect(() => {
     setSidebarOpen(!isMobile);
   }, [isMobile]);
+
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const closeSidebarOnMobile = useCallback(() => {
     if (isMobile) setSidebarOpen(false);
@@ -95,6 +103,12 @@ export const HomePage = () => {
     },
     enabled: !isLoadingMe,
     placeholderData: (prev) => prev,
+  });
+
+  const { data: searchData } = useQuery({
+    queryKey: isAuthor ? ['dashboard-search', debouncedSearch] : ['public-search', debouncedSearch],
+    queryFn: () => (isAuthor ? searchDashboardMemos(debouncedSearch) : searchPublicMemos(debouncedSearch)),
+    enabled: !isLoadingMe && debouncedSearch.length > 0,
   });
 
   const { data: tagsData } = useQuery({
@@ -171,6 +185,7 @@ export const HomePage = () => {
   const todayYear = new Date().getFullYear().toString();
 
   const memos = useMemo(() => {
+    if (debouncedSearch) return searchData?.memos ?? [];
     if ((activeView === 'trash' || activeView === 'private') && !isAuthor) return [];
     let all = data?.memos ?? [];
     if (activeView === 'onThisDay') {
@@ -221,7 +236,7 @@ export const HomePage = () => {
     }
     return sorted;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, activeTag, activeView, filters, todayMonthDay, todayYear, reviewSeed, sortMode]);
+  }, [data, searchData, debouncedSearch, activeTag, activeView, filters, todayMonthDay, todayYear, reviewSeed, sortMode]);
 
   if (isLoading || isLoadingMe) {
     return <div style={styles.loading}>Loading...</div>;
@@ -288,6 +303,8 @@ export const HomePage = () => {
           onRefresh={async () => { await queryClient.refetchQueries(); }}
           onImportExport={() => setShowImportExport(true)}
           onAiConfig={() => setShowAiConfig(true)}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
         />
         {activeView === 'stats' ? (
           <StatsView isAuthor={Boolean(isAuthor)} />

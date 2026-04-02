@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { getAuthorMemoBySlug, getDashboardStats, getRecordStats, listAuthorDateCounts, listAuthorMemos, listAuthorTagCounts } from '../db/memo-repository';
+import { getAuthorMemoBySlug, getDashboardStats, getRecordStats, listAuthorDateCounts, listAuthorMemos, listAuthorTagCounts, searchAuthorMemos } from '../db/memo-repository';
 import type { WorkerBindings } from '../db/client';
 import { isAuthorSession } from '../lib/auth';
 import { parseTags } from '../lib/tag-parser';
@@ -34,6 +34,12 @@ dashboardRoutes.get('/record-stats', async (c) => {
   } while (cursor);
 
   return c.json({ ...stats, totalStorageBytes, imageCount });
+});
+
+dashboardRoutes.get('/memos/search', async (c) => {
+  const q = c.req.query('q')?.trim();
+  if (!q) return c.json({ memos: [] });
+  return c.json({ memos: await searchAuthorMemos(c.env.DB, q) });
 });
 
 dashboardRoutes.get('/memos', async (c) => {
