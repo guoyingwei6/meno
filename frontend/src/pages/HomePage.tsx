@@ -271,6 +271,9 @@ export const HomePage = () => {
           onSelectDate={handleSelectDate}
           onSelectTag={handleSelectTag}
           onChangeFilters={setFilters}
+          authenticated={Boolean(isAuthor)}
+          githubLogin={me?.githubLogin ?? null}
+          onLogout={async () => { await logout(); window.location.assign('/'); }}
         />
       </div>
       <main style={isMobile ? styles.mainMobile : styles.main}>

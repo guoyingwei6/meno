@@ -28,6 +28,9 @@ interface SidebarShellProps {
   onSelectDate?: (date: string) => void;
   onSelectTag?: (tag: string | null) => void;
   onChangeFilters?: (filters: MemoFilters) => void;
+  authenticated?: boolean;
+  githubLogin?: string | null;
+  onLogout?: () => void;
 }
 
 /** Icon cell: shows icon normally, ▾ arrow on hover. Clicking toggles expand. */
@@ -52,7 +55,7 @@ const IconCell = ({ icon, expanded, onToggle }: { icon: string; expanded: boolea
 const getMonthDays = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
 const getFirstDayOfWeek = (year: number, month: number) => new Date(year, month, 1).getDay();
 
-export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate = null, calendarDays = [], activeView = 'all', activeTag = null, filters = {}, tagTree = { groups: [], flat: [] }, style, onSelectView, onSelectDate, onSelectTag, onChangeFilters }: SidebarShellProps) => {
+export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate = null, calendarDays = [], activeView = 'all', activeTag = null, filters = {}, tagTree = { groups: [], flat: [] }, style, onSelectView, onSelectDate, onSelectTag, onChangeFilters, authenticated, githubLogin, onLogout }: SidebarShellProps) => {
   const { isDark } = useTheme();
   const c = colors(isDark);
   const today = new Date();
@@ -112,6 +115,12 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
       <div>
         <div style={styles.brandRow}>
           <h1 style={styles.brand}>Meno</h1>
+          {authenticated && githubLogin && (
+            <div style={styles.accountRow}>
+              <span style={{ fontSize: 13, color: c.textMuted, fontWeight: 500 }}>@{githubLogin}</span>
+              <button type="button" style={{ ...styles.logoutButton, borderColor: c.borderMedium, color: c.textMuted, background: c.cardBg }} onClick={onLogout}>退出</button>
+            </div>
+          )}
         </div>
         <div style={styles.statsGrid}>
           <button type="button" style={styles.statButton} onClick={() => onSelectView?.('stats')}><div style={styles.statNumber}>{memoCount}</div><div style={styles.statLabel}>笔记</div></button>
@@ -280,6 +289,19 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 8,
     marginBottom: 16,
+    justifyContent: 'space-between',
+  },
+  accountRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  logoutButton: {
+    border: '1px solid',
+    borderRadius: 6,
+    padding: '2px 8px',
+    fontSize: 12,
+    cursor: 'pointer',
   },
   brand: {
     fontSize: 28,

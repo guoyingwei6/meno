@@ -75,12 +75,7 @@ export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, 
         )}
       </div>
       <div style={styles.actions}>
-        {authenticated ? (
-          <>
-            <span style={{ ...styles.identity, color: c.textTertiary }}>@{githubLogin}</span>
-            <button type="button" style={{ ...styles.authButtonSecondary, borderColor: c.borderMedium, color: c.textTertiary, background: c.cardBg }} onClick={onLogout}>退出</button>
-          </>
-        ) : (
+        {!authenticated && (
           <button type="button" style={styles.authButtonPrimary} onClick={() => window.location.assign(loginUrl())}>GitHub 登录</button>
         )}
       </div>
