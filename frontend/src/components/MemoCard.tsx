@@ -211,7 +211,7 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
         <ReactMarkdown
           rehypePlugins={[rehypeRaw]}
           components={{
-            p: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
+            p: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{children}</p>,
             ul: ({ children }) => <ul style={{ margin: '0 0 8px', paddingLeft: 20 }}>{children}</ul>,
             ol: ({ children }) => <ol style={{ margin: '0 0 8px', paddingLeft: 20 }}>{children}</ol>,
             li: ({ children }) => <li style={{ lineHeight: 1.7 }}>{children}</li>,
