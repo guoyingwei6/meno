@@ -89,6 +89,31 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     }, 0);
   };
 
+  const uploadImage = async (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await fetch(`${getApiBase()}/api/uploads`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    });
+    const payload = (await response.json()) as { url: string };
+    setImages((prev) => [...prev, { url: payload.url, name: file.name }]);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) uploadImage(file);
+        return;
+      }
+    }
+  };
+
   const wrapSelection = (before: string, after: string) => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -146,6 +171,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
             updateTagSuggestions(event.target.value, event.target.selectionStart ?? event.target.value.length);
           }}
           onKeyUp={(e) => updateTagSuggestions(content, (e.target as HTMLTextAreaElement).selectionStart)}
+          onPaste={handlePaste}
           onCompositionEnd={(e) => { const ta = e.target as HTMLTextAreaElement; updateTagSuggestions(ta.value, ta.selectionStart); }}
           onScroll={(e) => {
             const overlay = (e.target as HTMLElement).previousElementSibling as HTMLElement;
@@ -217,15 +243,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
               const input = event.currentTarget;
               const file = input.files?.[0];
               if (!file) return;
-              const form = new FormData();
-              form.append('file', file);
-              const response = await fetch(`${getApiBase()}/api/uploads`, {
-                method: 'POST',
-                credentials: 'include',
-                body: form,
-              });
-              const payload = (await response.json()) as { url: string };
-              setImages((prev) => [...prev, { url: payload.url, name: file.name }]);
+              await uploadImage(file);
               input.value = '';
             }}
           />
