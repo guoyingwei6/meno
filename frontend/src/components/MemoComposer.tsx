@@ -43,6 +43,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const [displayDate, setDisplayDate] = useState(defaultDisplayDate);
   const [images, setImages] = useState<UploadedImage[]>([]);
   const [tagDropdown, setTagDropdown] = useState<{ suggestions: string[]; top: number; left: number } | null>(null);
+  const [tagIndex, setTagIndex] = useState(0);
   const { isDark } = useTheme();
   const c = colors(isDark);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -66,9 +67,10 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
         if (ib === -1) return -1;
         return ia - ib;
       });
-    if (!suggestions.length) { setTagDropdown(null); return; }
+    if (!suggestions.length) { setTagDropdown(null); setTagIndex(0); return; }
     const coords = getCaretCoords(ta);
     setTagDropdown({ suggestions, ...coords });
+    setTagIndex(0);
   };
 
   const applyTagSuggestion = (tag: string) => {
@@ -172,6 +174,14 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
           }}
           onKeyUp={(e) => updateTagSuggestions(content, (e.target as HTMLTextAreaElement).selectionStart)}
           onPaste={handlePaste}
+          onKeyDown={(e) => {
+            if (!tagDropdown) return;
+            const len = tagDropdown.suggestions.length;
+            if (e.key === 'ArrowDown') { e.preventDefault(); setTagIndex((i) => (i + 1) % len); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setTagIndex((i) => (i - 1 + len) % len); }
+            else if (e.key === 'Enter') { e.preventDefault(); applyTagSuggestion(tagDropdown.suggestions[tagIndex]); }
+            else if (e.key === 'Escape') { e.preventDefault(); setTagDropdown(null); }
+          }}
           onCompositionEnd={(e) => { const ta = e.target as HTMLTextAreaElement; updateTagSuggestions(ta.value, ta.selectionStart); }}
           onScroll={(e) => {
             const overlay = (e.target as HTMLElement).previousElementSibling as HTMLElement;
@@ -262,9 +272,10 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     </section>
     {tagDropdown && createPortal(
       <div style={{ position: 'fixed', top: tagDropdown.top, left: tagDropdown.left, zIndex: 9999, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, maxHeight: `${5 * 40}px`, overflowY: 'auto' }}>
-        {tagDropdown.suggestions.map((tag) => (
+        {tagDropdown.suggestions.map((tag, i) => (
           <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
-            style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            onMouseEnter={() => setTagIndex(i)}
+            style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: i === tagIndex ? (isDark ? '#333' : '#f0f0f0') : 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             #{tag}
           </button>
         ))}
