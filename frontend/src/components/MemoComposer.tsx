@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getCaretCoords, getRecentTags, recordRecentTag } from '../lib/caret';
 import { useTheme, colors } from '../lib/theme';
@@ -37,6 +37,21 @@ const HighlightOverlay = ({ text, textColor }: { text: string; textColor: string
   );
 };
 
+const areSuggestionsEqual = (prev: string[] | undefined, next: string[]) => {
+  if (!prev) return false;
+  return prev.length === next.length && prev.every((tag, index) => tag === next[index]);
+};
+
+const getTagMatchBeforeCursor = (value: string, cursorPos: number) => value.slice(0, cursorPos).match(/#([^\s#]*)$/);
+
+const restoreTextareaFocus = (textarea: HTMLTextAreaElement | null, cursorPos: number) => {
+  if (!textarea) return;
+  requestAnimationFrame(() => {
+    textarea.focus();
+    textarea.setSelectionRange(cursorPos, cursorPos);
+  });
+};
+
 export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }: MemoComposerProps) => {
   const [content, setContent] = useState('');
   const [visibility, setVisibility] = useState<'public' | 'private' | 'draft'>('public');
@@ -50,12 +65,21 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const editorWrapRef = useRef<HTMLDivElement | null>(null);
+  const dismissedTagMatchRef = useRef<string | null>(null);
 
   const updateTagSuggestions = (value: string, cursorPos: number) => {
     const ta = textareaRef.current;
-    const before = value.slice(0, cursorPos);
-    const match = before.match(/#([^\s#]*)$/);
-    if (!match || !ta) { setTagDropdown(null); return; }
+    const match = getTagMatchBeforeCursor(value, cursorPos);
+    if (!match || !ta) {
+      dismissedTagMatchRef.current = null;
+      setTagDropdown(null);
+      return;
+    }
+    if (dismissedTagMatchRef.current === match[0]) {
+      setTagDropdown(null);
+      return;
+    }
+    dismissedTagMatchRef.current = null;
     const prefix = match[1];
     const recent = getRecentTags();
     const suggestions = existingTags
@@ -71,7 +95,23 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     if (!suggestions.length) { setTagDropdown(null); setTagIndex(0); return; }
     const coords = getCaretCoords(ta);
     setTagDropdown({ suggestions, ...coords });
-    setTagIndex(0);
+    setTagIndex((current) => {
+      if (areSuggestionsEqual(tagDropdown?.suggestions, suggestions) && current < suggestions.length) return current;
+      return 0;
+    });
+  };
+
+  const dismissTagSuggestions = (value: string, cursorPos: number) => {
+    const match = getTagMatchBeforeCursor(value, cursorPos);
+    dismissedTagMatchRef.current = match?.[0] ?? null;
+    setTagDropdown(null);
+    restoreTextareaFocus(textareaRef.current, cursorPos);
+  };
+
+  const closeTagSuggestions = (value: string, cursorPos: number) => {
+    const match = getTagMatchBeforeCursor(value, cursorPos);
+    dismissedTagMatchRef.current = match?.[0] ?? null;
+    setTagDropdown(null);
   };
 
   const applyTagSuggestion = (tag: string) => {
@@ -84,6 +124,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     const newContent = content.slice(0, cursorPos - match[0].length) + '#' + tag + ' ' + content.slice(cursorPos);
     setContent(newContent);
     setTagDropdown(null);
+    dismissedTagMatchRef.current = null;
     recordRecentTag(tag);
     setTimeout(() => {
       const newPos = cursorPos - match[0].length + tag.length + 2;
@@ -166,13 +207,17 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   };
 
   const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      dismissTagSuggestions(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length);
+      return;
+    }
     // Tag dropdown navigation
     if (tagDropdown) {
       const len = tagDropdown.suggestions.length;
       if (e.key === 'ArrowDown') { e.preventDefault(); setTagIndex((i) => (i + 1) % len); return; }
       if (e.key === 'ArrowUp') { e.preventDefault(); setTagIndex((i) => (i - 1 + len) % len); return; }
       if (e.key === 'Enter') { e.preventDefault(); applyTagSuggestion(tagDropdown.suggestions[tagIndex]); return; }
-      if (e.key === 'Escape') { e.preventDefault(); setTagDropdown(null); return; }
     }
     // Format shortcuts: Ctrl/Cmd + B/I/U
     const mod = e.metaKey || e.ctrlKey;
@@ -181,6 +226,20 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     else if (e.key === 'i') { e.preventDefault(); wrapSelection('*', '*'); }
     else if (e.key === 'u') { e.preventDefault(); wrapSelection('<u>', '</u>'); }
   };
+
+  useEffect(() => {
+    if (!tagDropdown) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      const ta = textareaRef.current;
+      if (!ta) return;
+      dismissTagSuggestions(ta.value, ta.selectionStart ?? ta.value.length);
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [tagDropdown]);
 
   return (
     <>
@@ -192,11 +251,19 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
           style={styles.textarea}
           placeholder="现在的想法是..."
           value={content}
+          onBlur={(e) => {
+            if (!tagDropdown) return;
+            closeTagSuggestions(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length);
+          }}
           onChange={(event) => {
             setContent(event.target.value);
             updateTagSuggestions(event.target.value, event.target.selectionStart ?? event.target.value.length);
           }}
-          onKeyUp={(e) => updateTagSuggestions(content, (e.target as HTMLTextAreaElement).selectionStart)}
+          onKeyUp={(e) => {
+            if (e.key === 'Escape') return;
+            if (tagDropdown && ['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) return;
+            updateTagSuggestions(content, (e.target as HTMLTextAreaElement).selectionStart);
+          }}
           onPaste={handlePaste}
           onKeyDown={handleEditorKeyDown}
           onCompositionEnd={(e) => { const ta = e.target as HTMLTextAreaElement; updateTagSuggestions(ta.value, ta.selectionStart); }}
@@ -290,7 +357,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     {tagDropdown && createPortal(
       <div style={{ position: 'fixed', top: tagDropdown.top, left: tagDropdown.left, zIndex: 9999, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, maxHeight: `${5 * 40}px`, overflowY: 'auto' }}>
         {tagDropdown.suggestions.map((tag, i) => (
-          <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
+          <button key={tag} type="button" tabIndex={-1} onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
             onMouseEnter={() => setTagIndex(i)}
             style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: i === tagIndex ? (isDark ? '#333' : '#f0f0f0') : 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             #{tag}

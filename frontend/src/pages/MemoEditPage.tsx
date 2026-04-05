@@ -24,6 +24,21 @@ const HighlightOverlay = ({ text, textColor }: { text: string; textColor: string
   );
 };
 
+const areSuggestionsEqual = (prev: string[] | undefined, next: string[]) => {
+  if (!prev) return false;
+  return prev.length === next.length && prev.every((tag, index) => tag === next[index]);
+};
+
+const getTagMatchBeforeCursor = (value: string, cursorPos: number) => value.slice(0, cursorPos).match(/#([^\s#]*)$/);
+
+const restoreTextareaFocus = (textarea: HTMLTextAreaElement | null, cursorPos: number) => {
+  if (!textarea) return;
+  requestAnimationFrame(() => {
+    textarea.focus();
+    textarea.setSelectionRange(cursorPos, cursorPos);
+  });
+};
+
 export const MemoEditPage = () => {
   const { slug = '' } = useParams();
   const navigate = useNavigate();
@@ -32,6 +47,7 @@ export const MemoEditPage = () => {
   const c = colors(isDark);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const editorWrapRef = useRef<HTMLDivElement>(null);
+  const dismissedTagMatchRef = useRef<string | null>(null);
 
   const { data: me, isLoading: meLoading } = useQuery({ queryKey: ['me'], queryFn: fetchMe });
   const isAuthor = me?.authenticated && me.role === 'author';
@@ -57,12 +73,21 @@ export const MemoEditPage = () => {
   const [displayDate, setDisplayDate] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [tagDropdown, setTagDropdown] = useState<{ suggestions: string[]; top: number; left: number } | null>(null);
+  const [tagIndex, setTagIndex] = useState(0);
 
   const updateTagSuggestions = (value: string, cursorPos: number) => {
     const ta = textareaRef.current;
-    const before = value.slice(0, cursorPos);
-    const match = before.match(/#([^\s#]*)$/);
-    if (!match || !ta) { setTagDropdown(null); return; }
+    const match = getTagMatchBeforeCursor(value, cursorPos);
+    if (!match || !ta) {
+      dismissedTagMatchRef.current = null;
+      setTagDropdown(null);
+      return;
+    }
+    if (dismissedTagMatchRef.current === match[0]) {
+      setTagDropdown(null);
+      return;
+    }
+    dismissedTagMatchRef.current = null;
     const prefix = match[1];
     const recent = getRecentTags();
     const suggestions = existingTags
@@ -74,9 +99,26 @@ export const MemoEditPage = () => {
         if (ib === -1) return -1;
         return ia - ib;
       });
-    if (!suggestions.length) { setTagDropdown(null); return; }
+    if (!suggestions.length) { setTagDropdown(null); setTagIndex(0); return; }
     const coords = getCaretCoords(ta);
     setTagDropdown({ suggestions, ...coords });
+    setTagIndex((current) => {
+      if (areSuggestionsEqual(tagDropdown?.suggestions, suggestions) && current < suggestions.length) return current;
+      return 0;
+    });
+  };
+
+  const dismissTagSuggestions = (value: string, cursorPos: number) => {
+    const match = getTagMatchBeforeCursor(value, cursorPos);
+    dismissedTagMatchRef.current = match?.[0] ?? null;
+    setTagDropdown(null);
+    restoreTextareaFocus(textareaRef.current, cursorPos);
+  };
+
+  const closeTagSuggestions = (value: string, cursorPos: number) => {
+    const match = getTagMatchBeforeCursor(value, cursorPos);
+    dismissedTagMatchRef.current = match?.[0] ?? null;
+    setTagDropdown(null);
   };
 
   const applyTagSuggestion = (tag: string) => {
@@ -90,6 +132,7 @@ export const MemoEditPage = () => {
     const newContent = current.slice(0, cursorPos - match[0].length) + '#' + tag + ' ' + current.slice(cursorPos);
     setTextContent(newContent);
     setTagDropdown(null);
+    dismissedTagMatchRef.current = null;
     recordRecentTag(tag);
     setTimeout(() => {
       const newPos = cursorPos - match[0].length + tag.length + 2;
@@ -123,6 +166,20 @@ export const MemoEditPage = () => {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [lightboxIndex, editImages.length]);
+
+  useEffect(() => {
+    if (!tagDropdown) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      const ta = textareaRef.current;
+      if (!ta) return;
+      dismissTagSuggestions(ta.value, ta.selectionStart ?? ta.value.length);
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [tagDropdown]);
   const editVisibility = (visibility ?? memo?.visibility ?? 'public') as 'public' | 'private';
   const editDisplayDate = displayDate ?? memo?.displayDate ?? '';
 
@@ -212,7 +269,28 @@ export const MemoEditPage = () => {
             }}
             value={editText}
             onChange={(e) => { setTextContent(e.target.value); updateTagSuggestions(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
-            onKeyUp={(e) => updateTagSuggestions(textContent ?? '', (e.target as HTMLTextAreaElement).selectionStart)}
+            onBlur={(e) => {
+              if (!tagDropdown) return;
+              closeTagSuggestions(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                dismissTagSuggestions(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length);
+                return;
+              }
+              if (tagDropdown) {
+                const len = tagDropdown.suggestions.length;
+                if (e.key === 'ArrowDown') { e.preventDefault(); setTagIndex((i) => (i + 1) % len); return; }
+                if (e.key === 'ArrowUp') { e.preventDefault(); setTagIndex((i) => (i - 1 + len) % len); return; }
+                if (e.key === 'Enter') { e.preventDefault(); applyTagSuggestion(tagDropdown.suggestions[tagIndex]); return; }
+              }
+            }}
+            onKeyUp={(e) => {
+              if (e.key === 'Escape') return;
+              if (tagDropdown && ['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) return;
+              updateTagSuggestions(textContent ?? '', (e.target as HTMLTextAreaElement).selectionStart);
+            }}
             onCompositionEnd={(e) => { const ta = e.target as HTMLTextAreaElement; updateTagSuggestions(ta.value, ta.selectionStart); }}
             onScroll={(e) => {
               const overlay = (e.target as HTMLElement).previousElementSibling as HTMLElement;
@@ -331,9 +409,10 @@ export const MemoEditPage = () => {
     </div>
     {tagDropdown && createPortal(
       <div style={{ position: 'fixed', top: tagDropdown.top, left: tagDropdown.left, zIndex: 9999, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, maxHeight: `${5 * 40}px`, overflowY: 'auto' }}>
-        {tagDropdown.suggestions.map((tag) => (
-          <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
-            style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {tagDropdown.suggestions.map((tag, i) => (
+          <button key={tag} type="button" tabIndex={-1} onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
+            onMouseEnter={() => setTagIndex(i)}
+            style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: i === tagIndex ? (isDark ? '#333' : '#f0f0f0') : 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             #{tag}
           </button>
         ))}

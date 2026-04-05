@@ -2,6 +2,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoComposer } from '../components/MemoComposer';
 
+vi.mock('../lib/caret', async () => {
+  const actual = await vi.importActual<typeof import('../lib/caret')>('../lib/caret');
+  return {
+    ...actual,
+    getCaretCoords: () => ({ top: 120, left: 80 }),
+  };
+});
+
 beforeEach(() => {
   vi.stubGlobal(
     'fetch',
@@ -78,6 +86,61 @@ describe('MemoComposer', () => {
         visibility: 'public',
         displayDate: '2026-03-25',
       });
+    });
+  });
+
+  it('dismisses tag suggestions on Escape until the tag text changes', async () => {
+    const onSubmit = vi.fn(async () => undefined);
+
+    render(
+      <MemoComposer
+        defaultDisplayDate="2026-03-25"
+        onSubmit={onSubmit}
+        existingTags={[
+          { tag: 'apple', count: 1 },
+          { tag: 'banana', count: 1 },
+        ]}
+      />,
+    );
+
+    const textarea = screen.getByPlaceholderText('现在的想法是...');
+    fireEvent.change(textarea, { target: { value: '#' } });
+    expect(screen.getByRole('button', { name: '#apple' })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyUp(window, { key: 'Escape' });
+    expect(screen.queryByRole('button', { name: '#apple' })).not.toBeInTheDocument();
+    await waitFor(() => expect(textarea).toHaveFocus());
+
+    fireEvent.keyUp(textarea, { key: 'a', target: textarea });
+    expect(screen.queryByRole('button', { name: '#apple' })).not.toBeInTheDocument();
+
+    fireEvent.change(textarea, { target: { value: '#a' } });
+    expect(screen.getByRole('button', { name: '#apple' })).toBeInTheDocument();
+  });
+
+  it('closes tag suggestions when the textarea loses focus', async () => {
+    const onSubmit = vi.fn(async () => undefined);
+
+    render(
+      <MemoComposer
+        defaultDisplayDate="2026-03-25"
+        onSubmit={onSubmit}
+        existingTags={[
+          { tag: 'apple', count: 1 },
+          { tag: 'banana', count: 1 },
+        ]}
+      />,
+    );
+
+    const textarea = screen.getByPlaceholderText('现在的想法是...');
+    fireEvent.change(textarea, { target: { value: '#' } });
+    expect(screen.getByRole('button', { name: '#apple' })).toBeInTheDocument();
+
+    fireEvent.blur(textarea);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: '#apple' })).not.toBeInTheDocument();
     });
   });
 });
