@@ -146,16 +146,40 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     }, 0);
   };
 
+  const [submitting, setSubmitting] = useState(false);
+
   const handleSubmit = async () => {
     const textPart = content.trim();
     const imagePart = images.map((img) => `![](${img.url})`).join('\n');
     const fullContent = [textPart, imagePart].filter(Boolean).join('\n');
-    if (!fullContent) return;
-    await onSubmit({ content: fullContent, visibility, displayDate });
-    setContent('');
-    setVisibility('public');
-    setDisplayDate(defaultDisplayDate);
-    setImages([]);
+    if (!fullContent || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSubmit({ content: fullContent, visibility, displayDate });
+      setContent('');
+      setVisibility('public');
+      setDisplayDate(defaultDisplayDate);
+      setImages([]);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Tag dropdown navigation
+    if (tagDropdown) {
+      const len = tagDropdown.suggestions.length;
+      if (e.key === 'ArrowDown') { e.preventDefault(); setTagIndex((i) => (i + 1) % len); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setTagIndex((i) => (i - 1 + len) % len); return; }
+      if (e.key === 'Enter') { e.preventDefault(); applyTagSuggestion(tagDropdown.suggestions[tagIndex]); return; }
+      if (e.key === 'Escape') { e.preventDefault(); setTagDropdown(null); return; }
+    }
+    // Format shortcuts: Ctrl/Cmd + B/I/U
+    const mod = e.metaKey || e.ctrlKey;
+    if (!mod) return;
+    if (e.key === 'b') { e.preventDefault(); wrapSelection('**', '**'); }
+    else if (e.key === 'i') { e.preventDefault(); wrapSelection('*', '*'); }
+    else if (e.key === 'u') { e.preventDefault(); wrapSelection('<u>', '</u>'); }
   };
 
   return (
@@ -174,14 +198,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
           }}
           onKeyUp={(e) => updateTagSuggestions(content, (e.target as HTMLTextAreaElement).selectionStart)}
           onPaste={handlePaste}
-          onKeyDown={(e) => {
-            if (!tagDropdown) return;
-            const len = tagDropdown.suggestions.length;
-            if (e.key === 'ArrowDown') { e.preventDefault(); setTagIndex((i) => (i + 1) % len); }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); setTagIndex((i) => (i - 1 + len) % len); }
-            else if (e.key === 'Enter') { e.preventDefault(); applyTagSuggestion(tagDropdown.suggestions[tagIndex]); }
-            else if (e.key === 'Escape') { e.preventDefault(); setTagDropdown(null); }
-          }}
+          onKeyDown={handleEditorKeyDown}
           onCompositionEnd={(e) => { const ta = e.target as HTMLTextAreaElement; updateTagSuggestions(ta.value, ta.selectionStart); }}
           onScroll={(e) => {
             const overlay = (e.target as HTMLElement).previousElementSibling as HTMLElement;
@@ -265,8 +282,8 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
           </label>
           <input aria-label="归属日期" type="date" value={displayDate} onChange={(event) => setDisplayDate(event.target.value)} style={{ ...styles.dateInput, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }} />
         </div>
-        <button type="button" style={styles.submitButton} onClick={handleSubmit}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        <button type="button" style={{ ...styles.submitButton, ...(submitting ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }} onClick={handleSubmit} disabled={submitting} title={submitting ? '发布中...' : '发布'}>
+          {submitting ? <span style={{ fontSize: 12, color: '#fff' }}>...</span> : <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>}
         </button>
       </div>
     </section>
