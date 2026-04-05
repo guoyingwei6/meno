@@ -10,15 +10,20 @@ import { useTheme, colors } from '../lib/theme';
 const getApiBase = () => (globalThis as typeof globalThis & { __MENO_API_BASE_URL__?: string }).__MENO_API_BASE_URL__ || '';
 
 /** Tag highlight overlay — sits behind the transparent textarea */
-const HighlightOverlay = ({ text, textColor }: { text: string; textColor: string }) => {
-  const parts = text.split(/(#[^\s#]+)/g);
+const HighlightOverlay = ({ text, textColor, isDark }: { text: string; textColor: string; isDark: boolean }) => {
+  const parts = text.split(/(```[\s\S]*?```|`[^`\n]+`|#[^\s#]+)/g);
+  const codeBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
   return (
     <div style={overlayStyle} aria-hidden="true">
-      {parts.map((part, i) =>
-        /^#[^\s#]+$/.test(part)
-          ? <span key={i} style={{ color: '#3aa864', fontWeight: 500 }}>{part}</span>
-          : <span key={i} style={{ color: textColor }}>{part}</span>
-      )}
+      {parts.map((part, i) => {
+        if (part.startsWith('```'))
+          return <span key={i} style={{ color: textColor, background: codeBg, borderRadius: 3 }}>{part}</span>;
+        if (part.startsWith('`') && part.endsWith('`') && part.length > 1)
+          return <span key={i} style={{ color: textColor, background: codeBg, borderRadius: 3 }}>{part}</span>;
+        if (/^#[^\s#]+$/.test(part))
+          return <span key={i} style={{ color: '#3aa864', fontWeight: 500 }}>{part}</span>;
+        return <span key={i} style={{ color: textColor }}>{part}</span>;
+      })}
       <span>{'\n '}</span>
     </div>
   );
@@ -29,7 +34,19 @@ const areSuggestionsEqual = (prev: string[] | undefined, next: string[]) => {
   return prev.length === next.length && prev.every((tag, index) => tag === next[index]);
 };
 
-const getTagMatchBeforeCursor = (value: string, cursorPos: number) => value.slice(0, cursorPos).match(/#([^\s#]*)$/);
+const isInsideCodeBlock = (text: string, pos: number): boolean => {
+  const before = text.slice(0, pos);
+  const fenced = (before.match(/```/g) || []).length;
+  if (fenced % 2 === 1) return true;
+  const withoutFenced = before.replace(/```[\s\S]*?```/g, '');
+  const backticks = (withoutFenced.match(/`/g) || []).length;
+  return backticks % 2 === 1;
+};
+
+const getTagMatchBeforeCursor = (value: string, cursorPos: number) => {
+  if (isInsideCodeBlock(value, cursorPos)) return null;
+  return value.slice(0, cursorPos).match(/#([^\s#]*)$/);
+};
 
 const restoreTextareaFocus = (textarea: HTMLTextAreaElement | null, cursorPos: number) => {
   if (!textarea) return;
@@ -257,7 +274,7 @@ export const MemoEditPage = () => {
 
         {/* Textarea + overlay */}
         <div ref={editorWrapRef} style={{ position: 'relative' }}>
-          <HighlightOverlay text={editText} textColor={c.textPrimary} />
+          <HighlightOverlay text={editText} textColor={c.textPrimary} isDark={isDark} />
           <textarea
             ref={textareaRef}
             style={{
