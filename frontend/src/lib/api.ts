@@ -325,6 +325,36 @@ export const deleteMemo = async (id: number): Promise<{ success: boolean }> => {
   return response.json();
 };
 
+export const renameTag = async (oldTag: string, newTag: string): Promise<{ updated: number }> => {
+  const response = await fetch(withApiBase('/api/dashboard/tags/rename'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ oldTag, newTag }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to rename tag');
+  }
+
+  return response.json();
+};
+
+export const deleteTag = async (tag: string, deleteNotes: boolean): Promise<{ deleted: number }> => {
+  const response = await fetch(withApiBase('/api/dashboard/tags/delete'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tag, deleteNotes }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to delete tag');
+  }
+
+  return response.json();
+};
+
 export const uploadFile = async (file: File): Promise<{ url: string; objectKey: string }> => {
   const formData = new FormData();
   formData.append('file', file);

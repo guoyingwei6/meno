@@ -382,7 +382,7 @@ export const listAuthorDateCounts = async (db: D1Database): Promise<Array<{ date
     .prepare(
       `SELECT display_date as date, COUNT(*) as count
        FROM memos
-       WHERE deleted_at IS NULL
+       WHERE deleted_at IS NULL AND visibility = 'public'
        GROUP BY display_date
        ORDER BY display_date ASC`,
     )
@@ -557,4 +557,147 @@ export const backupMemosToR2 = async (db: D1Database, r2: R2Bucket, keepDays = 3
       await r2.delete(obj.key);
     }
   }
+};
+
+const PARAMETER_CHUNK_SIZE = 99;
+
+const escapeTagRegex = (tag: string) => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeLikeValue = (value: string) => value.replace(/[\\%_]/g, '\\$&');
+
+const getAffectedMemoIds = async (db: D1Database, tag: string): Promise<number[]> => {
+  const tagPrefix = `${escapeLikeValue(tag)}/%`;
+  const { results } = await db
+    .prepare("SELECT DISTINCT memo_id FROM memo_tags WHERE tag = ? OR tag LIKE ? ESCAPE '\\' ORDER BY memo_id ASC")
+    .bind(tag, tagPrefix)
+    .all<{ memo_id: number }>();
+
+  return (results ?? []).map((row) => Number(row.memo_id));
+};
+
+const updateMemoContentAndMetadata = async (
+  db: D1Database,
+  memoIds: number[],
+  transform: (content: string) => string,
+) => {
+  for (let i = 0; i < memoIds.length; i += PARAMETER_CHUNK_SIZE) {
+    const chunk = memoIds.slice(i, i + PARAMETER_CHUNK_SIZE);
+    const placeholders = chunk.map(() => '?').join(', ');
+    const { results } = await db
+      .prepare(`SELECT id, content FROM memos WHERE id IN (${placeholders})`)
+      .bind(...chunk)
+      .all<{ id: number; content: string }>();
+
+    for (const row of results ?? []) {
+      const nextContent = transform(String(row.content));
+      const tags = parseTags(nextContent);
+      await db
+        .prepare('UPDATE memos SET content = ?, excerpt = ?, tag_count = ? WHERE id = ?')
+        .bind(nextContent, nextContent, tags.length, Number(row.id))
+        .run();
+    }
+  }
+};
+
+export const renameTag = async (db: D1Database, oldTag: string, newTag: string): Promise<number> => {
+  const affectedMemoIds = await getAffectedMemoIds(db, oldTag);
+  if (affectedMemoIds.length === 0) {
+    return 0;
+  }
+  const oldTagPrefix = `${escapeLikeValue(oldTag)}/%`;
+
+  await db
+    .prepare(
+      `DELETE FROM memo_tags
+       WHERE tag = ?
+         AND EXISTS (
+           SELECT 1
+           FROM memo_tags AS existing_tags
+           WHERE existing_tags.memo_id = memo_tags.memo_id
+             AND existing_tags.tag = ?
+         )`,
+    )
+    .bind(oldTag, newTag)
+    .run();
+
+  await db.prepare('UPDATE memo_tags SET tag = ? WHERE tag = ?').bind(newTag, oldTag).run();
+
+  await db
+    .prepare(
+      `DELETE FROM memo_tags
+       WHERE tag LIKE ? ESCAPE '\\'
+         AND EXISTS (
+           SELECT 1
+           FROM memo_tags AS existing_tags
+           WHERE existing_tags.memo_id = memo_tags.memo_id
+             AND existing_tags.tag = ? || substr(memo_tags.tag, ?)
+         )`,
+    )
+    .bind(oldTagPrefix, newTag, oldTag.length + 1)
+    .run();
+
+  await db
+    .prepare("UPDATE memo_tags SET tag = ? || substr(tag, ?) WHERE tag LIKE ? ESCAPE '\\'")
+    .bind(newTag, oldTag.length + 1, oldTagPrefix)
+    .run();
+
+  const escapedOldTag = escapeTagRegex(oldTag);
+  const childPattern = new RegExp(`(^|\\s)#${escapedOldTag}((?:\\/[\\p{L}\\p{N}_-]+)+)(?=\\s|$)`, 'gu');
+  const exactPattern = new RegExp(`(^|\\s)#${escapedOldTag}(?=\\s|$)`, 'gu');
+
+  await updateMemoContentAndMetadata(db, affectedMemoIds, (content) =>
+    content.replace(childPattern, `$1#${newTag}$2`).replace(exactPattern, `$1#${newTag}`),
+  );
+
+  return affectedMemoIds.length;
+};
+
+export const deleteTag = async (db: D1Database, tag: string, deleteNotes: boolean): Promise<number> => {
+  const tagPrefix = `${escapeLikeValue(tag)}/%`;
+
+  if (deleteNotes) {
+    const now = new Date().toISOString();
+    const { results } = await db
+      .prepare(
+        `SELECT DISTINCT memos.id
+         FROM memos
+         INNER JOIN memo_tags ON memo_tags.memo_id = memos.id
+         WHERE memos.deleted_at IS NULL
+           AND (memo_tags.tag = ? OR memo_tags.tag LIKE ? ESCAPE '\\')`,
+      )
+      .bind(tag, tagPrefix)
+      .all<{ id: number }>();
+
+    const memoIds = (results ?? []).map((row) => Number(row.id));
+    if (memoIds.length === 0) {
+      return 0;
+    }
+
+    for (let i = 0; i < memoIds.length; i += PARAMETER_CHUNK_SIZE) {
+      const chunk = memoIds.slice(i, i + PARAMETER_CHUNK_SIZE);
+      const placeholders = chunk.map(() => '?').join(', ');
+      await db
+        .prepare(`UPDATE memos SET previous_visibility = visibility, deleted_at = ? WHERE id IN (${placeholders})`)
+        .bind(now, ...chunk)
+        .run();
+    }
+
+    return memoIds.length;
+  }
+
+  const affectedMemoIds = await getAffectedMemoIds(db, tag);
+  if (affectedMemoIds.length === 0) {
+    return 0;
+  }
+
+  await db.prepare("DELETE FROM memo_tags WHERE tag = ? OR tag LIKE ? ESCAPE '\\'").bind(tag, tagPrefix).run();
+
+  const escapedTag = escapeTagRegex(tag);
+  const childPattern = new RegExp(`(^|\\s)#${escapedTag}(?:\\/[\\p{L}\\p{N}_-]+)+(?=\\s|$)`, 'gu');
+  const exactPattern = new RegExp(`(^|\\s)#${escapedTag}(?=\\s|$)`, 'gu');
+
+  await updateMemoContentAndMetadata(db, affectedMemoIds, (content) =>
+    content.replace(childPattern, '$1').replace(exactPattern, '$1'),
+  );
+
+  return affectedMemoIds.length;
 };

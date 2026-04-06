@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { getAuthorMemoBySlug, getDashboardStats, getRecordStats, listAuthorDateCounts, listAuthorMemos, listAuthorTagCounts, searchAuthorMemos } from '../db/memo-repository';
+import { deleteTag, getAuthorMemoBySlug, getDashboardStats, getRecordStats, listAuthorDateCounts, listAuthorMemos, listAuthorTagCounts, renameTag, searchAuthorMemos } from '../db/memo-repository';
 import type { WorkerBindings } from '../db/client';
 import { isAuthorSession } from '../lib/auth';
 import { parseTags } from '../lib/tag-parser';
@@ -75,6 +75,31 @@ dashboardRoutes.post('/retag', async (c) => {
   }
 
   return c.json({ updated });
+});
+
+dashboardRoutes.post('/tags/rename', async (c) => {
+  const body = await c.req.json<{ oldTag?: string; newTag?: string }>();
+  const oldTag = body.oldTag?.trim();
+  const newTag = body.newTag?.trim();
+
+  if (!oldTag || !newTag || oldTag === newTag) {
+    return c.json({ message: 'Invalid tag rename request' }, 400);
+  }
+
+  const updated = await renameTag(c.env.DB, oldTag, newTag);
+  return c.json({ updated });
+});
+
+dashboardRoutes.post('/tags/delete', async (c) => {
+  const body = await c.req.json<{ tag?: string; deleteNotes?: boolean }>();
+  const tag = body.tag?.trim();
+
+  if (!tag || typeof body.deleteNotes !== 'boolean') {
+    return c.json({ message: 'Invalid tag delete request' }, 400);
+  }
+
+  const deleted = await deleteTag(c.env.DB, tag, body.deleteNotes);
+  return c.json({ deleted });
 });
 
 dashboardRoutes.get('/memos/:slug', async (c) => {

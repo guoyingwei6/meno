@@ -9,7 +9,7 @@ import { TopBar } from '../components/TopBar';
 import { StatsView } from '../components/StatsView';
 import { AiConfigModal } from '../components/AiConfigModal';
 import { ImportExportModal } from '../components/ImportExportModal';
-import { createMemo, deleteMemo, favoriteMemo as favoriteMemoApi, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, pinMemo as pinMemoApi, restoreMemo, searchDashboardMemos, searchPublicMemos, unfavoriteMemo as unfavoriteMemoApi, unpinMemo as unpinMemoApi, updateMemo } from '../lib/api';
+import { createMemo, deleteMemo, deleteTag as deleteTagApi, favoriteMemo as favoriteMemoApi, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, pinMemo as pinMemoApi, renameTag as renameTagApi, restoreMemo, searchDashboardMemos, searchPublicMemos, unfavoriteMemo as unfavoriteMemoApi, unpinMemo as unpinMemoApi, updateMemo } from '../lib/api';
 import type { CalendarResponse, DashboardStatsResponse, MeResponse, PublicStatsResponse } from '../lib/api';
 import { buildTagTree } from '../lib/tag-tree';
 import type { MemoFilters } from '../components/SidebarShell';
@@ -188,9 +188,27 @@ export const HomePage = () => {
     mutationFn: (id: number) => unfavoriteMemoApi(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['dashboard-memos'] }); },
   });
+  const renameTagMutation = useMutation({
+    mutationFn: (vars: { oldTag: string; newTag: string }) => renameTagApi(vars.oldTag, vars.newTag),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-memos'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-tags'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
+    },
+  });
+  const deleteTagMutation = useMutation({
+    mutationFn: (vars: { tag: string; deleteNotes: boolean }) => deleteTagApi(vars.tag, vars.deleteNotes),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-memos'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-tags'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    },
+  });
 
-  const todayMonthDay = new Date().toISOString().slice(5, 10);
-  const todayYear = new Date().getFullYear().toString();
+  const now = new Date();
+  const todayMonthDay = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayYear = now.getFullYear().toString();
 
   const memos = useMemo(() => {
     if (debouncedSearch) return searchData?.memos ?? [];
@@ -298,6 +316,19 @@ export const HomePage = () => {
           onChangeFilters={setFilters}
           authenticated={Boolean(isAuthor)}
           githubLogin={me?.githubLogin ?? null}
+          onRenameTag={(oldTag, newTag) => {
+            if (activeTag === oldTag || activeTag?.startsWith(`${oldTag}/`)) {
+              const nextActiveTag = activeTag === oldTag ? newTag : `${newTag}${activeTag.slice(oldTag.length)}`;
+              setActiveTag(nextActiveTag);
+            }
+            renameTagMutation.mutate({ oldTag, newTag });
+          }}
+          onDeleteTag={(tag, deleteNotes) => {
+            if (activeTag === tag || activeTag?.startsWith(`${tag}/`)) {
+              setActiveTag(null);
+            }
+            deleteTagMutation.mutate({ tag, deleteNotes });
+          }}
           onLogout={async () => { await logout(); window.location.assign('/'); }}
         />
       </div>
