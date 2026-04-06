@@ -19,12 +19,12 @@ interface SidebarShellProps {
   streakDays?: number;
   activeDate?: string | null;
   calendarDays?: DateCount[];
-  activeView?: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats';
+  activeView?: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats' | 'favorited';
   activeTag?: string | null;
   filters?: MemoFilters;
   tagTree?: TagTreeResult;
   style?: React.CSSProperties;
-  onSelectView?: (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats') => void;
+  onSelectView?: (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats' | 'favorited') => void;
   onSelectDate?: (date: string) => void;
   onSelectTag?: (tag: string | null) => void;
   onChangeFilters?: (filters: MemoFilters) => void;
@@ -200,6 +200,10 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
         <div style={styles.navRow}>
           <span style={styles.iconCellStatic}>🎲</span>
           <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'dailyReview' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('dailyReview')}>每日回顾</button>
+        </div>
+        <div style={styles.navRow}>
+          <span style={styles.iconCellStatic}>⭐</span>
+          <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'favorited' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('favorited')}>收藏笔记</button>
         </div>
         <div style={styles.navRow}>
           <span style={styles.iconCellStatic}>🔒</span>

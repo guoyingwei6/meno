@@ -121,7 +121,7 @@ export const fetchDashboardTags = async (): Promise<TagListResponse> => {
 };
 
 export const fetchDashboardMemos = async (
-  view: 'all' | 'public' | 'private' | 'draft' | 'trash',
+  view: 'all' | 'public' | 'private' | 'draft' | 'trash' | 'favorited',
   date?: string,
 ): Promise<{ memos: MemoSummary[] }> => {
   const params = new URLSearchParams({ view });
@@ -291,6 +291,24 @@ export const unpinMemo = async (id: number): Promise<{ memo: MemoDetail }> => {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to unpin memo');
+  return response.json();
+};
+
+export const favoriteMemo = async (id: number): Promise<{ memo: MemoDetail }> => {
+  const response = await fetch(withApiBase(`/api/memos/${id}/favorite`), {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to favorite memo');
+  return response.json();
+};
+
+export const unfavoriteMemo = async (id: number): Promise<{ memo: MemoDetail }> => {
+  const response = await fetch(withApiBase(`/api/memos/${id}/unfavorite`), {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to unfavorite memo');
   return response.json();
 };
 

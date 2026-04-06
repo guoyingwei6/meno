@@ -54,6 +54,7 @@ export const MemoDetailPage = () => {
       </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
         {data.memo.pinnedAt && <span style={{ color: c.textMuted, fontSize: 13 }}>📌 已置顶</span>}
+        {isAuthor && data.memo.favoritedAt && <span style={{ color: '#f0c040', fontSize: 13 }}>⭐ 已收藏</span>}
         {data.memo.tags.map((tag) => (
           <span key={tag} style={{ color: c.tagColor, fontSize: 14, fontWeight: 500 }}>#{tag}</span>
         ))}

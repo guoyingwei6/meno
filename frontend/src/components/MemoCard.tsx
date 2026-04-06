@@ -19,6 +19,7 @@ interface MemoCardProps {
   allTags?: string[];
   onFillTags?: (id: number, newContent: string) => void;
   onPin?: (memo: MemoSummary) => void;
+  onFavorite?: (memo: MemoSummary) => void;
 }
 
 const formatTime = (iso: string) => {
@@ -31,7 +32,7 @@ const countWords = (text: string) => {
   return cleaned.length;
 };
 
-export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, onRestore, onChangeVisibility, onDelete, allTags, onFillTags, onPin }: MemoCardProps) => {
+export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, onRestore, onChangeVisibility, onDelete, allTags, onFillTags, onPin, onFavorite }: MemoCardProps) => {
   const { isDark } = useTheme();
   const c = colors(isDark);
   const [expanded, setExpanded] = useState(false);
@@ -150,7 +151,7 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
   return (
     <article style={{ ...styles.card, background: c.cardBg, borderColor: c.border }}>
       <div style={styles.header}>
-        <span style={{ ...styles.date, color: c.textMuted }}>{memo.pinnedAt && '📌 '}{memo.displayDate}</span>
+        <span style={{ ...styles.date, color: c.textMuted }}>{memo.pinnedAt && '📌 '}{memo.favoritedAt && isAuthor && <span style={{ color: '#f0c040' }}>⭐ </span>}{memo.displayDate}</span>
         <div style={styles.headerRight}>
           {toastMsg ? <span style={styles.copiedHint}>{toastMsg}</span> : null}
           <div ref={menuRef} style={styles.menuWrap}>
@@ -171,6 +172,7 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
                 ) : isAuthor ? (
                   <>
                     <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label={memo.pinnedAt ? '取消置顶' : '置顶'} onClick={() => { setMenuOpen(false); onPin?.(memo); }}>{memo.pinnedAt ? '取消置顶' : '置顶'}</button>
+                    <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label={memo.favoritedAt ? '取消收藏' : '收藏'} onClick={() => { setMenuOpen(false); onFavorite?.(memo); }}>{memo.favoritedAt ? '取消收藏' : '收藏'}</button>
                     <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label="编辑" onClick={() => { setMenuOpen(false); onEdit?.(memo); }}>编辑</button>
                     <button
                       type="button"

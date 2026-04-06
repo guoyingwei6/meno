@@ -9,7 +9,7 @@ import { TopBar } from '../components/TopBar';
 import { StatsView } from '../components/StatsView';
 import { AiConfigModal } from '../components/AiConfigModal';
 import { ImportExportModal } from '../components/ImportExportModal';
-import { createMemo, deleteMemo, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, pinMemo as pinMemoApi, restoreMemo, searchDashboardMemos, searchPublicMemos, unpinMemo as unpinMemoApi, updateMemo } from '../lib/api';
+import { createMemo, deleteMemo, favoriteMemo as favoriteMemoApi, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, pinMemo as pinMemoApi, restoreMemo, searchDashboardMemos, searchPublicMemos, unfavoriteMemo as unfavoriteMemoApi, unpinMemo as unpinMemoApi, updateMemo } from '../lib/api';
 import type { CalendarResponse, DashboardStatsResponse, MeResponse, PublicStatsResponse } from '../lib/api';
 import { buildTagTree } from '../lib/tag-tree';
 import type { MemoFilters } from '../components/SidebarShell';
@@ -35,7 +35,7 @@ export const HomePage = () => {
   const c = colors(isDark);
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats'>('all');
+  const [activeView, setActiveView] = useState<'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats' | 'favorited'>('all');
   const [reviewSeed, setReviewSeed] = useState(0);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [filters, setFilters] = useState<MemoFilters>({});
@@ -68,7 +68,7 @@ export const HomePage = () => {
     closeSidebarOnMobile();
   };
 
-  const handleSelectView = (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats') => {
+  const handleSelectView = (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats' | 'favorited') => {
     if (view === 'dailyReview') setReviewSeed((s) => s + 1);
     setActiveView(view);
     setSelectedDate(null);
@@ -91,13 +91,13 @@ export const HomePage = () => {
 
   const isAuthor = me?.authenticated && me.role === 'author';
 
-  const apiView = activeView === 'private' ? 'private' : activeView === 'trash' ? 'trash' : 'public';
+  const apiView = activeView === 'private' ? 'private' : activeView === 'trash' ? 'trash' : activeView === 'favorited' ? 'favorited' : 'public';
 
   const { data, isLoading } = useQuery<PublicMemosResponse | { memos: PublicMemosResponse['memos'] }>({
     queryKey: isAuthor ? ['dashboard-memos', apiView, selectedDate] : ['public-memos', selectedDate],
     queryFn: () => {
       if (isAuthor) {
-        return fetchDashboardMemos(apiView as 'all' | 'public' | 'private' | 'draft' | 'trash', selectedDate ?? undefined);
+        return fetchDashboardMemos(apiView as 'all' | 'public' | 'private' | 'draft' | 'trash' | 'favorited', selectedDate ?? undefined);
       }
       return fetchPublicMemos(undefined, selectedDate ?? undefined);
     },
@@ -180,13 +180,21 @@ export const HomePage = () => {
     mutationFn: (id: number) => unpinMemoApi(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['dashboard-memos'] }); },
   });
+  const favoriteMutation = useMutation({
+    mutationFn: (id: number) => favoriteMemoApi(id),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['dashboard-memos'] }); },
+  });
+  const unfavoriteMutation = useMutation({
+    mutationFn: (id: number) => unfavoriteMemoApi(id),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['dashboard-memos'] }); },
+  });
 
   const todayMonthDay = new Date().toISOString().slice(5, 10);
   const todayYear = new Date().getFullYear().toString();
 
   const memos = useMemo(() => {
     if (debouncedSearch) return searchData?.memos ?? [];
-    if ((activeView === 'trash' || activeView === 'private') && !isAuthor) return [];
+    if ((activeView === 'trash' || activeView === 'private' || activeView === 'favorited') && !isAuthor) return [];
     let all = data?.memos ?? [];
     if (activeView === 'onThisDay') {
       all = all.filter((m) => {
@@ -319,6 +327,9 @@ export const HomePage = () => {
             {activeView === 'private' && !isAuthor && (
               <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后查看私密笔记</div>
             )}
+            {activeView === 'favorited' && !isAuthor && (
+              <div style={{ ...styles.loginHint, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>登录后查看收藏笔记</div>
+            )}
             {activeView === 'trash' && isAuthor && (
               <div style={{ ...styles.trashNotice, color: c.textMuted }}>回收站内的笔记仅保留 30 天</div>
             )}
@@ -348,6 +359,13 @@ export const HomePage = () => {
                   unpinMutation.mutate(memo.id);
                 } else {
                   pinMutation.mutate(memo.id);
+                }
+              }}
+              onFavoriteMemo={(memo) => {
+                if (memo.favoritedAt) {
+                  unfavoriteMutation.mutate(memo.id);
+                } else {
+                  favoriteMutation.mutate(memo.id);
                 }
               }}
             />

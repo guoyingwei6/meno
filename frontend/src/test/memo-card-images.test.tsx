@@ -17,7 +17,7 @@ describe('MemoCard image previews', () => {
           updatedAt: '2026-03-25T09:00:00.000Z',
           publishedAt: '2026-03-25T09:00:00.000Z',
           deletedAt: null,
-      pinnedAt: null,
+      pinnedAt: null, favoritedAt: null,
           previousVisibility: null,
           hasImages: true,
           imageCount: 2,

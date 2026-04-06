@@ -9,7 +9,7 @@ interface CreateMemoInput {
 }
 
 interface AuthorViewQuery {
-  view: 'all' | 'public' | 'private' | 'draft' | 'trash';
+  view: 'all' | 'public' | 'private' | 'draft' | 'trash' | 'favorited';
   date?: string;
 }
 
@@ -25,6 +25,7 @@ const mapMemoRow = (row: Record<string, unknown>): MemoSummary => ({
   publishedAt: row.published_at ? String(row.published_at) : null,
   deletedAt: row.deleted_at ? String(row.deleted_at) : null,
   pinnedAt: row.pinned_at ? String(row.pinned_at) : null,
+  favoritedAt: row.favorited_at ? String(row.favorited_at) : null,
   previousVisibility: row.previous_visibility ? (String(row.previous_visibility) as MemoVisibility) : null,
   hasImages: Boolean(row.has_images),
   imageCount: Number(row.image_count),
@@ -217,6 +218,23 @@ export const unpinMemo = async (db: D1Database, id: number): Promise<MemoDetail 
   return { ...memo, assets: [] };
 };
 
+export const favoriteMemo = async (db: D1Database, id: number): Promise<MemoDetail | null> => {
+  const now = new Date().toISOString();
+  await db.prepare('UPDATE memos SET favorited_at = ? WHERE id = ? AND deleted_at IS NULL').bind(now, id).run();
+  const row = await db.prepare('SELECT * FROM memos WHERE id = ? LIMIT 1').bind(id).first<Record<string, unknown>>();
+  if (!row) return null;
+  const [memo] = await attachTags(db, [mapMemoRow(row)]);
+  return { ...memo, assets: [] };
+};
+
+export const unfavoriteMemo = async (db: D1Database, id: number): Promise<MemoDetail | null> => {
+  await db.prepare('UPDATE memos SET favorited_at = NULL WHERE id = ? AND deleted_at IS NULL').bind(id).run();
+  const row = await db.prepare('SELECT * FROM memos WHERE id = ? LIMIT 1').bind(id).first<Record<string, unknown>>();
+  if (!row) return null;
+  const [memo] = await attachTags(db, [mapMemoRow(row)]);
+  return { ...memo, assets: [] };
+};
+
 export const trashMemo = async (db: D1Database, id: number): Promise<boolean> => {
   const now = new Date().toISOString();
   const result = await db
@@ -403,6 +421,10 @@ export const listAuthorMemos = async (db: D1Database, query: AuthorViewQuery): P
 
   if (query.view === 'trash') {
     clauses.push('deleted_at IS NOT NULL');
+  } else if (query.view === 'favorited') {
+    clauses.push('deleted_at IS NULL');
+    clauses.push('favorited_at IS NOT NULL');
+    clauses.push("visibility = 'public'");
   } else {
     clauses.push('deleted_at IS NULL');
     if (query.view !== 'all') {

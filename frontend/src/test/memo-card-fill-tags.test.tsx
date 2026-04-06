@@ -13,7 +13,7 @@ const baseMemo = {
   updatedAt: '2026-03-31T00:00:00.000Z',
   publishedAt: null,
   deletedAt: null,
-      pinnedAt: null,
+      pinnedAt: null, favoritedAt: null,
   previousVisibility: null,
   hasImages: false,
   imageCount: 0,

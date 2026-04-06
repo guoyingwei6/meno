@@ -17,9 +17,10 @@ interface MemoTimelineProps {
   onDeleteMemo?: (memo: MemoSummary) => void;
   onFillTagsMemo?: (id: number, newContent: string) => void;
   onPinMemo?: (memo: MemoSummary) => void;
+  onFavoriteMemo?: (memo: MemoSummary) => void;
 }
 
-export const MemoTimeline = ({ memos, isAuthor, isTrash, allTags, onOpenMemo, onOpenTag, onEditMemo, onRestoreMemo, onChangeVisibility, onDeleteMemo, onFillTagsMemo, onPinMemo }: MemoTimelineProps) => {
+export const MemoTimeline = ({ memos, isAuthor, isTrash, allTags, onOpenMemo, onOpenTag, onEditMemo, onRestoreMemo, onChangeVisibility, onDeleteMemo, onFillTagsMemo, onPinMemo, onFavoriteMemo }: MemoTimelineProps) => {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -49,7 +50,7 @@ export const MemoTimeline = ({ memos, isAuthor, isTrash, allTags, onOpenMemo, on
   return (
     <section style={styles.timeline}>
       {visible.map((memo) => (
-        <MemoCard key={memo.id} memo={memo} isAuthor={isAuthor} isTrash={isTrash} allTags={allTags} onOpen={onOpenMemo} onOpenTag={onOpenTag} onEdit={onEditMemo} onRestore={onRestoreMemo} onChangeVisibility={onChangeVisibility} onDelete={onDeleteMemo} onFillTags={onFillTagsMemo} onPin={onPinMemo} />
+        <MemoCard key={memo.id} memo={memo} isAuthor={isAuthor} isTrash={isTrash} allTags={allTags} onOpen={onOpenMemo} onOpenTag={onOpenTag} onEdit={onEditMemo} onRestore={onRestoreMemo} onChangeVisibility={onChangeVisibility} onDelete={onDeleteMemo} onFillTags={onFillTagsMemo} onPin={onPinMemo} onFavorite={onFavoriteMemo} />
       ))}
       {visibleCount < memos.length && <div ref={sentinelRef} style={styles.sentinel} />}
     </section>

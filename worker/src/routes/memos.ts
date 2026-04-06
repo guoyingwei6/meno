@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { createMemo, pinMemo, restoreMemo, trashMemo, unpinMemo, updateMemo } from '../db/memo-repository';
+import { createMemo, favoriteMemo, pinMemo, restoreMemo, trashMemo, unfavoriteMemo, unpinMemo, updateMemo } from '../db/memo-repository';
 import type { WorkerBindings } from '../db/client';
 import { isAuthorSession } from '../lib/auth';
 import { createMemoSlug } from '../lib/slug';
@@ -77,6 +77,28 @@ memoRoutes.post('/memos/:id/unpin', async (c) => {
     return c.json({ message: 'Unauthorized' }, 401);
   }
   const memo = await unpinMemo(c.env.DB, Number(c.req.param('id')));
+  if (!memo) {
+    return c.json({ message: 'Memo not found' }, 404);
+  }
+  return c.json({ memo });
+});
+
+memoRoutes.post('/memos/:id/favorite', async (c) => {
+  if (!isAuthorSession(c.req.header('Cookie'))) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const memo = await favoriteMemo(c.env.DB, Number(c.req.param('id')));
+  if (!memo) {
+    return c.json({ message: 'Memo not found' }, 404);
+  }
+  return c.json({ memo });
+});
+
+memoRoutes.post('/memos/:id/unfavorite', async (c) => {
+  if (!isAuthorSession(c.req.header('Cookie'))) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const memo = await unfavoriteMemo(c.env.DB, Number(c.req.param('id')));
   if (!memo) {
     return c.json({ message: 'Memo not found' }, 404);
   }
