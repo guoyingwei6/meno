@@ -235,7 +235,7 @@ export const HomePage = () => {
         sorted.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
         break;
     }
-    if (activeView === 'all' && !activeTag) {
+    if ((activeView === 'all' || activeView === 'favorited') && !activeTag) {
       sorted.sort((a, b) => {
         const ap = a.pinnedAt ? 1 : 0;
         const bp = b.pinnedAt ? 1 : 0;
@@ -253,6 +253,7 @@ export const HomePage = () => {
   const allTags: Array<{ tag: string; count: number }> = Array.isArray(tagsData?.tags) ? tagsData.tags : [];
   const tagTree = buildTagTree(allTags);
   const todayStr = new Date().toISOString().slice(0, 10);
+  const hasOnThisDay = (calendarData?.days ?? []).some((d) => d.date.slice(5, 10) === todayMonthDay && d.date.slice(0, 4) !== todayYear);
 
   const pageStyle: React.CSSProperties = { ...styles.page, background: c.pageBg, color: c.textPrimary };
   const sidebarMobileOpen: React.CSSProperties = { ...styles.sidebarMobileOpen, background: c.sidebarBg };
@@ -289,6 +290,7 @@ export const HomePage = () => {
           activeTag={activeTag}
           filters={filters}
           tagTree={tagTree}
+          hasOnThisDay={hasOnThisDay}
           style={isMobile ? { minHeight: 0, flex: '1 1 0', overflowY: 'auto' as const } : undefined}
           onSelectView={handleSelectView}
           onSelectDate={handleSelectDate}

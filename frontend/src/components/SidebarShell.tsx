@@ -23,6 +23,7 @@ interface SidebarShellProps {
   activeTag?: string | null;
   filters?: MemoFilters;
   tagTree?: TagTreeResult;
+  hasOnThisDay?: boolean;
   style?: React.CSSProperties;
   onSelectView?: (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats' | 'favorited') => void;
   onSelectDate?: (date: string) => void;
@@ -55,7 +56,7 @@ const IconCell = ({ icon, expanded, onToggle }: { icon: string; expanded: boolea
 const getMonthDays = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
 const getFirstDayOfWeek = (year: number, month: number) => new Date(year, month, 1).getDay();
 
-export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate = null, calendarDays = [], activeView = 'all', activeTag = null, filters = {}, tagTree = { groups: [], flat: [] }, style, onSelectView, onSelectDate, onSelectTag, onChangeFilters, authenticated, githubLogin, onLogout }: SidebarShellProps) => {
+export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate = null, calendarDays = [], activeView = 'all', activeTag = null, filters = {}, tagTree = { groups: [], flat: [] }, hasOnThisDay = false, style, onSelectView, onSelectDate, onSelectTag, onChangeFilters, authenticated, githubLogin, onLogout }: SidebarShellProps) => {
   const { isDark } = useTheme();
   const c = colors(isDark);
   const today = new Date();
@@ -195,7 +196,7 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
         )}
         <div style={styles.navRow}>
           <span style={styles.iconCellStatic}>✨</span>
-          <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'onThisDay' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('onThisDay')}>那年今日</button>
+          <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'onThisDay' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('onThisDay')}>那年今日{hasOnThisDay && activeView !== 'onThisDay' && <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#31d266', marginLeft: 6, verticalAlign: 'middle' }} />}</button>
         </div>
         <div style={styles.navRow}>
           <span style={styles.iconCellStatic}>🎲</span>
