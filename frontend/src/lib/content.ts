@@ -7,5 +7,8 @@ export const stripMarkdownImageSyntax = (content: string): string => {
 };
 
 export const stripTagSyntax = (content: string): string => {
-  return content.replace(/(^|\s)#[\p{L}\p{N}_\-/]+[\p{L}\p{N}_-]/gu, '$1').replace(/^\s+/, '').replace(/\s+$/, '').replace(/\n{3,}/g, '\n\n');
+  // Preserve code blocks, only strip tags from non-code text
+  return content
+    .replace(/(```[\s\S]*?```|`[^`\n]+`)|(?:^|\s)#[\p{L}\p{N}_\-/]+[\p{L}\p{N}_-]/gu, (match, code) => code ?? '')
+    .replace(/^\s+/, '').replace(/\s+$/, '').replace(/\n{3,}/g, '\n\n');
 };

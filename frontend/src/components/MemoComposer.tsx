@@ -333,6 +333,9 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
           <button type="button" style={styles.fmtButton} title="下划线" onClick={() => wrapSelection('<u>', '</u>')}>
             <span style={{ textDecoration: 'underline' }}>U</span>
           </button>
+          <button type="button" style={styles.fmtButton} title="代码块" onClick={() => wrapSelection('```\n', '\n```')}>
+            <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>&lt;/&gt;</span>
+          </button>
           <span style={styles.fmtDivider} />
           <button type="button" style={styles.fmtButton} title="无序列表" onClick={() => insertLinePrefix('- ')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1" fill="#666"/><circle cx="4" cy="12" r="1" fill="#666"/><circle cx="4" cy="18" r="1" fill="#666"/></svg>

@@ -349,6 +349,7 @@ export const MemoEditPage = () => {
             <button type="button" style={toolBtn} title="加粗" onClick={() => wrapSelection('**', '**')}><strong>B</strong></button>
             <button type="button" style={toolBtn} title="斜体" onClick={() => wrapSelection('*', '*')}><em>I</em></button>
             <button type="button" style={toolBtn} title="下划线" onClick={() => wrapSelection('<u>', '</u>')}><span style={{ textDecoration: 'underline' }}>U</span></button>
+            <button type="button" style={toolBtn} title="代码块" onClick={() => wrapSelection('```\n', '\n```')}><span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>&lt;/&gt;</span></button>
             <span style={divider} />
             <button type="button" style={toolBtn} title="无序列表" onClick={() => insertLinePrefix('- ')}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1" fill="#666"/><circle cx="4" cy="12" r="1" fill="#666"/><circle cx="4" cy="18" r="1" fill="#666"/></svg>
