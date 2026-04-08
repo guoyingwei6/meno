@@ -11,7 +11,7 @@ interface MemoTimelineProps {
   allTags?: string[];
   onOpenMemo?: (memo: MemoSummary) => void;
   onOpenTag?: (tag: string) => void;
-  onEditMemo?: (memo: MemoSummary) => void;
+  onSaveEditMemo?: (memo: MemoSummary, input: { content: string; visibility: 'public' | 'private' | 'draft'; displayDate: string }) => void;
   onRestoreMemo?: (memo: MemoSummary) => void;
   onChangeVisibility?: (memo: MemoSummary, visibility: 'public' | 'private') => void;
   onDeleteMemo?: (memo: MemoSummary) => void;
@@ -20,7 +20,7 @@ interface MemoTimelineProps {
   onFavoriteMemo?: (memo: MemoSummary) => void;
 }
 
-export const MemoTimeline = ({ memos, isAuthor, isTrash, allTags, onOpenMemo, onOpenTag, onEditMemo, onRestoreMemo, onChangeVisibility, onDeleteMemo, onFillTagsMemo, onPinMemo, onFavoriteMemo }: MemoTimelineProps) => {
+export const MemoTimeline = ({ memos, isAuthor, isTrash, allTags, onOpenMemo, onOpenTag, onSaveEditMemo, onRestoreMemo, onChangeVisibility, onDeleteMemo, onFillTagsMemo, onPinMemo, onFavoriteMemo }: MemoTimelineProps) => {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -50,7 +50,7 @@ export const MemoTimeline = ({ memos, isAuthor, isTrash, allTags, onOpenMemo, on
   return (
     <section style={styles.timeline}>
       {visible.map((memo) => (
-        <MemoCard key={memo.id} memo={memo} isAuthor={isAuthor} isTrash={isTrash} allTags={allTags} onOpen={onOpenMemo} onOpenTag={onOpenTag} onEdit={onEditMemo} onRestore={onRestoreMemo} onChangeVisibility={onChangeVisibility} onDelete={onDeleteMemo} onFillTags={onFillTagsMemo} onPin={onPinMemo} onFavorite={onFavoriteMemo} />
+        <MemoCard key={memo.id} memo={memo} isAuthor={isAuthor} isTrash={isTrash} allTags={allTags} onOpen={onOpenMemo} onOpenTag={onOpenTag} onSaveEdit={onSaveEditMemo} onRestore={onRestoreMemo} onChangeVisibility={onChangeVisibility} onDelete={onDeleteMemo} onFillTags={onFillTagsMemo} onPin={onPinMemo} onFavorite={onFavoriteMemo} />
       ))}
       {visibleCount < memos.length && <div ref={sentinelRef} style={styles.sentinel} />}
     </section>

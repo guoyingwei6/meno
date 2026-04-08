@@ -22,19 +22,23 @@ const baseMemo = {
 
 describe('MemoCard edit actions', () => {
   it('shows edit and "设为公开" for a private memo', () => {
-    const onEdit = vi.fn();
+    const onSaveEdit = vi.fn();
     const onChangeVisibility = vi.fn();
     const memo = { ...baseMemo, visibility: 'private' as const };
 
     render(
-      <MemoCard memo={memo} isAuthor onEdit={onEdit} onChangeVisibility={onChangeVisibility} />,
+      <MemoCard memo={memo} isAuthor onSaveEdit={onSaveEdit} onChangeVisibility={onChangeVisibility} />,
     );
 
     // 先打开 ··· 下拉菜单
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
 
+    // 点击编辑应进入内联编辑模式而非调用回调
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
-    expect(onEdit).toHaveBeenCalledWith(memo);
+    expect(screen.getByText('编辑 Memo')).toBeTruthy();
+
+    // 取消编辑
+    fireEvent.click(screen.getByText('取消'));
 
     // 再次打开菜单
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));

@@ -1,7 +1,10 @@
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
-import { extractMarkdownImageUrls, stripMarkdownImageSyntax, stripTagSyntax } from '../lib/content';
+import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
+import { getCaretCoords, getRecentTags, recordRecentTag } from '../lib/caret';
+import { uploadFile } from '../lib/api';
+import { extractMarkdownImageUrls, stripMarkdownImageSyntax, stripTagSyntax } from '../lib/content';
 import type { MemoSummary } from '../types/shared';
 import { useTheme, colors } from '../lib/theme';
 import { getAiConfig, chatCompletionsUrl } from '../lib/ai-config';
@@ -12,7 +15,7 @@ interface MemoCardProps {
   isTrash?: boolean;
   onOpen?: (memo: MemoSummary) => void;
   onOpenTag?: (tag: string) => void;
-  onEdit?: (memo: MemoSummary) => void;
+  onSaveEdit?: (memo: MemoSummary, input: { content: string; visibility: 'public' | 'private' | 'draft'; displayDate: string }) => void;
   onRestore?: (memo: MemoSummary) => void;
   onChangeVisibility?: (memo: MemoSummary, visibility: 'public' | 'private') => void;
   onDelete?: (memo: MemoSummary) => void;
@@ -32,7 +35,42 @@ const countWords = (text: string) => {
   return cleaned.length;
 };
 
-export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, onRestore, onChangeVisibility, onDelete, allTags, onFillTags, onPin, onFavorite }: MemoCardProps) => {
+const areSuggestionsEqual = (prev: string[] | undefined, next: string[]) => {
+  if (!prev) return false;
+  return prev.length === next.length && prev.every((tag, index) => tag === next[index]);
+};
+
+const restoreTextareaFocus = (textarea: HTMLTextAreaElement | null, cursorPos: number) => {
+  if (!textarea) return;
+  requestAnimationFrame(() => {
+    textarea.focus();
+    textarea.setSelectionRange(cursorPos, cursorPos);
+  });
+};
+
+const EditHighlightOverlay = ({ text, textColor, isDark }: { text: string; textColor: string; isDark: boolean }) => {
+  const parts = text.split(/(```[\s\S]*?```|`[^`\n]+`|#[^\s#]+)/g);
+  const codeBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  return (
+    <div style={editStyles.highlightOverlay} aria-hidden="true">
+      {parts.map((part, i) => {
+        if (part.startsWith('```')) {
+          return <span key={i} style={{ color: textColor, background: codeBg, borderRadius: 3 }}>{part}</span>;
+        }
+        if (part.startsWith('`') && part.endsWith('`') && part.length > 1) {
+          return <span key={i} style={{ color: textColor, background: codeBg, borderRadius: 3 }}>{part}</span>;
+        }
+        if (/^#[^\s#]+$/.test(part)) {
+          return <span key={i} style={{ color: '#3aa864', fontWeight: 500 }}>{part}</span>;
+        }
+        return <span key={i} style={{ color: textColor }}>{part}</span>;
+      })}
+      <span>{'\n '}</span>
+    </div>
+  );
+};
+
+export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdit, onRestore, onChangeVisibility, onDelete, allTags, onFillTags, onPin, onFavorite }: MemoCardProps) => {
   const { isDark } = useTheme();
   const c = colors(isDark);
   const [expanded, setExpanded] = useState(false);
@@ -43,6 +81,16 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
   const [fillLoading, setFillLoading] = useState(false);
   const [suggestedTags, setSuggestedTags] = useState<string[] | null>(null);
   const [checkedTags, setCheckedTags] = useState<string[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [editContent, setEditContent] = useState('');
+  const [editImages, setEditImages] = useState<string[]>([]);
+  const [editVisibility, setEditVisibility] = useState<'public' | 'private' | 'draft'>('public');
+  const [editDisplayDate, setEditDisplayDate] = useState('');
+  const [editTagDropdown, setEditTagDropdown] = useState<{ suggestions: string[]; top: number; left: number } | null>(null);
+  const [editTagIndex, setEditTagIndex] = useState(0);
+  const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const editFileInputRef = useRef<HTMLInputElement | null>(null);
+  const dismissedEditTagMatchRef = useRef<string | null>(null);
   const imageUrls = extractMarkdownImageUrls(memo.content);
   const contentText = stripTagSyntax(stripMarkdownImageSyntax(memo.content));
   const isLong = contentText.length > 200;
@@ -148,6 +196,328 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
     setSuggestedTags(null);
   };
 
+  const isInsideCodeBlock = (text: string, pos: number): boolean => {
+    const before = text.slice(0, pos);
+    const fenced = (before.match(/```/g) || []).length;
+    if (fenced % 2 === 1) return true;
+    const withoutFenced = before.replace(/```[\s\S]*?```/g, '');
+    const backticks = (withoutFenced.match(/`/g) || []).length;
+    return backticks % 2 === 1;
+  };
+
+  const getEditTagMatch = (value: string, cursorPos: number) => {
+    if (isInsideCodeBlock(value, cursorPos)) return null;
+    return value.slice(0, cursorPos).match(/#([^\s#]*)$/);
+  };
+
+  const updateEditTagSuggestions = (value: string, cursorPos: number) => {
+    const ta = editTextareaRef.current;
+    const match = getEditTagMatch(value, cursorPos);
+    if (!match || !ta) {
+      dismissedEditTagMatchRef.current = null;
+      setEditTagDropdown(null);
+      return;
+    }
+    if (dismissedEditTagMatchRef.current === match[0]) {
+      setEditTagDropdown(null);
+      return;
+    }
+    dismissedEditTagMatchRef.current = null;
+    const prefix = match[1];
+    const recent = getRecentTags();
+    const suggestions = (allTags ?? [])
+      .filter((tag) => tag.startsWith(prefix) && tag !== prefix)
+      .sort((a, b) => {
+        const ia = recent.indexOf(a);
+        const ib = recent.indexOf(b);
+        if (ia === -1 && ib === -1) return 0;
+        if (ia === -1) return 1;
+        if (ib === -1) return -1;
+        return ia - ib;
+      });
+    if (!suggestions.length) {
+      setEditTagDropdown(null);
+      setEditTagIndex(0);
+      return;
+    }
+    const coords = getCaretCoords(ta);
+    setEditTagDropdown({ suggestions, ...coords });
+    setEditTagIndex((current) => {
+      if (areSuggestionsEqual(editTagDropdown?.suggestions, suggestions) && current < suggestions.length) return current;
+      return 0;
+    });
+  };
+
+  const applyEditTagSuggestion = (tag: string) => {
+    const ta = editTextareaRef.current;
+    if (!ta) return;
+    const cursorPos = ta.selectionStart;
+    const before = editContent.slice(0, cursorPos);
+    const match = before.match(/#([^\s#]*)$/);
+    if (!match) return;
+    const newContent = editContent.slice(0, cursorPos - match[0].length) + '#' + tag + ' ' + editContent.slice(cursorPos);
+    setEditContent(newContent);
+    setEditTagDropdown(null);
+    dismissedEditTagMatchRef.current = null;
+    recordRecentTag(tag);
+    setTimeout(() => {
+      const newPos = cursorPos - match[0].length + tag.length + 2;
+      ta.focus();
+      ta.setSelectionRange(newPos, newPos);
+    }, 0);
+  };
+
+  const editWrapSelection = (before: string, after: string) => {
+    const ta = editTextareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const selected = editContent.slice(start, end);
+    const wrapped = `${before}${selected || '文本'}${after}`;
+    const next = editContent.slice(0, start) + wrapped + editContent.slice(end);
+    setEditContent(next);
+    setTimeout(() => {
+      ta.focus();
+      const cursorStart = start + before.length;
+      const cursorEnd = cursorStart + (selected || '文本').length;
+      ta.setSelectionRange(cursorStart, cursorEnd);
+    }, 0);
+  };
+
+  const editInsertLinePrefix = (prefix: string) => {
+    const ta = editTextareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const lineStart = editContent.lastIndexOf('\n', start - 1) + 1;
+    const next = editContent.slice(0, lineStart) + prefix + editContent.slice(lineStart);
+    setEditContent(next);
+    setTimeout(() => {
+      ta.focus();
+      ta.setSelectionRange(start + prefix.length, start + prefix.length);
+    }, 0);
+  };
+
+  const startEditing = () => {
+    setMenuOpen(false);
+    setEditContent(
+      stripMarkdownImageSyntax(memo.content)
+        .replace(/\n+---+\n+\*\*附件[：:]\*\*\n*/g, '\n')
+        .replace(/\n+---+\s*$/g, '')
+        .trim(),
+    );
+    setEditImages(extractMarkdownImageUrls(memo.content));
+    setEditVisibility(memo.visibility);
+    setEditDisplayDate(memo.displayDate);
+    setEditTagDropdown(null);
+    setEditTagIndex(0);
+    dismissedEditTagMatchRef.current = null;
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setEditing(false);
+    setEditTagDropdown(null);
+    dismissedEditTagMatchRef.current = null;
+  };
+
+  const handleSaveEdit = () => {
+    const textPart = editContent.trim();
+    const imagePart = editImages.map((url) => `![](${url})`).join('\n');
+    const fullContent = [textPart, imagePart].filter(Boolean).join('\n');
+    if (!fullContent) return;
+    onSaveEdit?.(memo, { content: fullContent, visibility: editVisibility, displayDate: editDisplayDate });
+    setEditing(false);
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') {
+      if (editTagDropdown) {
+        e.preventDefault();
+        const cursorPos = e.currentTarget.selectionStart ?? e.currentTarget.value.length;
+        const match = getEditTagMatch(e.currentTarget.value, cursorPos);
+        dismissedEditTagMatchRef.current = match?.[0] ?? null;
+        setEditTagDropdown(null);
+        restoreTextareaFocus(editTextareaRef.current, cursorPos);
+        return;
+      }
+      cancelEditing();
+      return;
+    }
+    if (editTagDropdown) {
+      const len = editTagDropdown.suggestions.length;
+      if (e.key === 'ArrowDown') { e.preventDefault(); setEditTagIndex((i) => (i + 1) % len); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setEditTagIndex((i) => (i - 1 + len) % len); return; }
+      if (e.key === 'Enter') { e.preventDefault(); applyEditTagSuggestion(editTagDropdown.suggestions[editTagIndex]); return; }
+    }
+    const mod = e.metaKey || e.ctrlKey;
+    if (!mod) return;
+    if (e.key === 'b') { e.preventDefault(); editWrapSelection('**', '**'); }
+    else if (e.key === 'i') { e.preventDefault(); editWrapSelection('*', '*'); }
+    else if (e.key === 'u') { e.preventDefault(); editWrapSelection('<u>', '</u>'); }
+  };
+
+  const handleEditUploadImage = async (file: File) => {
+    try {
+      const { url } = await uploadFile(file);
+      setEditImages((prev) => [...prev, url]);
+    } catch (error) {
+      showToast(`图片上传失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  };
+
+  useEffect(() => {
+    if (!editTagDropdown) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      const ta = editTextareaRef.current;
+      if (!ta) return;
+      const cursorPos = ta.selectionStart ?? ta.value.length;
+      const match = getEditTagMatch(ta.value, cursorPos);
+      dismissedEditTagMatchRef.current = match?.[0] ?? null;
+      setEditTagDropdown(null);
+      restoreTextareaFocus(ta, cursorPos);
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [editTagDropdown, editContent]);
+
+  if (editing) {
+    const editWordCount = countWords([editContent.trim(), editImages.map((url) => `![](${url})`).join('\n')].filter(Boolean).join('\n'));
+
+    return (
+      <>
+        <article style={{ ...styles.card, background: c.cardBg, borderColor: c.accent }}>
+          <div style={styles.header}>
+            <span style={{ ...styles.date, color: c.textMuted }}>编辑 Memo</span>
+          </div>
+          <div style={editStyles.editorWrap}>
+            <EditHighlightOverlay text={editContent} textColor={c.textPrimary} isDark={isDark} />
+            <textarea
+              ref={editTextareaRef}
+              autoFocus
+              style={{ ...editStyles.textarea, caretColor: c.textPrimary }}
+              value={editContent}
+              onBlur={(e) => {
+                if (!editTagDropdown) return;
+                const cursorPos = e.currentTarget.selectionStart ?? e.currentTarget.value.length;
+                const match = getEditTagMatch(e.currentTarget.value, cursorPos);
+                dismissedEditTagMatchRef.current = match?.[0] ?? null;
+                setEditTagDropdown(null);
+              }}
+              onChange={(e) => {
+                setEditContent(e.target.value);
+                updateEditTagSuggestions(e.target.value, e.target.selectionStart ?? e.target.value.length);
+              }}
+              onKeyDown={handleEditKeyDown}
+              onKeyUp={(e) => {
+                if (e.key === 'Escape') return;
+                if (editTagDropdown && ['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) return;
+                updateEditTagSuggestions(editContent, (e.target as HTMLTextAreaElement).selectionStart);
+              }}
+              onCompositionEnd={(e) => {
+                const ta = e.target as HTMLTextAreaElement;
+                updateEditTagSuggestions(ta.value, ta.selectionStart);
+              }}
+              onScroll={(e) => {
+                const overlay = (e.target as HTMLElement).previousElementSibling as HTMLElement;
+                if (overlay) overlay.scrollTop = (e.target as HTMLElement).scrollTop;
+                updateEditTagSuggestions(editContent, editTextareaRef.current?.selectionStart ?? editContent.length);
+              }}
+            />
+          </div>
+          {editImages.length > 0 ? (
+            <div style={editStyles.imageGrid}>
+              {editImages.map((url, index) => (
+                <div key={`${url}-${index}`} style={editStyles.imageWrap}>
+                  <img src={url} alt="" style={editStyles.imageThumb} />
+                  <button type="button" aria-label="删除图片" style={editStyles.imageRemove} onClick={() => setEditImages((prev) => prev.filter((_, i) => i !== index))}>✕</button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div style={{ ...editStyles.toolbar, borderTopColor: c.borderLight }}>
+            <div style={editStyles.toolsRow}>
+              <button
+                type="button"
+                style={{ ...editStyles.fmtButton, color: '#3aa864', fontWeight: 700 }}
+                title="添加标签"
+                onClick={() => {
+                  const ta = editTextareaRef.current;
+                  if (!ta) return;
+                  const pos = ta.selectionStart;
+                  const prefix = pos > 0 && editContent[pos - 1] !== ' ' && editContent[pos - 1] !== '\n' ? ' #' : '#';
+                  const next = editContent.slice(0, pos) + prefix + editContent.slice(pos);
+                  setEditContent(next);
+                  setTimeout(() => {
+                    ta.focus();
+                    ta.setSelectionRange(pos + prefix.length, pos + prefix.length);
+                  }, 0);
+                }}
+              >
+                #
+              </button>
+              <button type="button" style={{ ...editStyles.fmtButton, padding: 4 }} title="上传图片" onClick={() => editFileInputRef.current?.click()}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+              </button>
+              <input
+                ref={editFileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  const file = e.currentTarget.files?.[0];
+                  if (!file) return;
+                  await handleEditUploadImage(file);
+                  e.currentTarget.value = '';
+                }}
+              />
+              <span style={editStyles.fmtDivider} />
+              <button type="button" style={editStyles.fmtButton} title="加粗" onClick={() => editWrapSelection('**', '**')}><strong>B</strong></button>
+              <button type="button" style={editStyles.fmtButton} title="斜体" onClick={() => editWrapSelection('*', '*')}><em>I</em></button>
+              <button type="button" style={editStyles.fmtButton} title="下划线" onClick={() => editWrapSelection('<u>', '</u>')}><span style={{ textDecoration: 'underline' }}>U</span></button>
+              <button type="button" style={editStyles.fmtButton} title="代码块" onClick={() => editWrapSelection('```\n', '\n```')}><span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>&lt;/&gt;</span></button>
+              <span style={editStyles.fmtDivider} />
+              <button type="button" style={editStyles.fmtButton} title="无序列表" onClick={() => editInsertLinePrefix('- ')}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1" fill="#666"/><circle cx="4" cy="12" r="1" fill="#666"/><circle cx="4" cy="18" r="1" fill="#666"/></svg>
+              </button>
+              <button type="button" style={editStyles.fmtButton} title="有序列表" onClick={() => editInsertLinePrefix('1. ')}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="2" y="8" fill="#666" stroke="none" fontSize="8" fontFamily="sans-serif">1</text><text x="2" y="14" fill="#666" stroke="none" fontSize="8" fontFamily="sans-serif">2</text><text x="2" y="20" fill="#666" stroke="none" fontSize="8" fontFamily="sans-serif">3</text></svg>
+              </button>
+            </div>
+            <div style={editStyles.actionsRow}>
+              <span style={{ ...styles.footerText, color: c.textMuted }}>字数: {editWordCount}</span>
+              <label style={editStyles.selectWrap}>
+                <select value={editVisibility} onChange={(e) => setEditVisibility(e.target.value as 'public' | 'private' | 'draft')} style={{ ...editStyles.select, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }}>
+                  <option value="public">公开</option>
+                  <option value="private">私密</option>
+                  <option value="draft">草稿</option>
+                </select>
+              </label>
+              <input type="date" value={editDisplayDate} onChange={(e) => setEditDisplayDate(e.target.value)} style={{ ...editStyles.select, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }} />
+              <button type="button" style={{ ...editStyles.cancelButton, borderColor: c.borderMedium, background: c.cardBg, color: c.textPrimary }} onClick={cancelEditing}>取消</button>
+              <button type="button" style={editStyles.saveButton} onClick={handleSaveEdit} aria-label="保存编辑" title="保存编辑">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
+              </button>
+            </div>
+          </div>
+          {toastMsg ? <div style={{ ...styles.footer, borderTopColor: c.border, marginTop: 0 }}><span style={styles.copiedHint}>{toastMsg}</span></div> : null}
+        </article>
+        {editTagDropdown && typeof document !== 'undefined' ? createPortal(
+          <div style={{ position: 'fixed', top: editTagDropdown.top, left: editTagDropdown.left, zIndex: 9999, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, maxHeight: `${5 * 40}px`, overflowY: 'auto' }}>
+            {editTagDropdown.suggestions.map((tag, i) => (
+              <button key={tag} type="button" tabIndex={-1} onMouseDown={(e) => { e.preventDefault(); applyEditTagSuggestion(tag); }} onMouseEnter={() => setEditTagIndex(i)} style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: i === editTagIndex ? (isDark ? '#333' : '#f0f0f0') : 'transparent', padding: '8px 14px', fontSize: 14, color: '#3aa864', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                #{tag}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        ) : null}
+      </>
+    );
+  }
+
   return (
     <article style={{ ...styles.card, background: c.cardBg, borderColor: c.border }}>
       <div style={styles.header}>
@@ -173,7 +543,7 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onEdit, o
                   <>
                     <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label={memo.pinnedAt ? '取消置顶' : '置顶'} onClick={() => { setMenuOpen(false); onPin?.(memo); }}>{memo.pinnedAt ? '取消置顶' : '置顶'}</button>
                     <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label={memo.favoritedAt ? '取消收藏' : '收藏'} onClick={() => { setMenuOpen(false); onFavorite?.(memo); }}>{memo.favoritedAt ? '取消收藏' : '收藏'}</button>
-                    <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label="编辑" onClick={() => { setMenuOpen(false); onEdit?.(memo); }}>编辑</button>
+                    <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label="编辑" onClick={startEditing}>编辑</button>
                     <button
                       type="button"
                       style={{ ...styles.menuItem, color: fillLoading ? c.textMuted : '#3aa864' }}
@@ -521,5 +891,157 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: 340,
     boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
     cursor: 'default',
+  },
+};
+
+const sharedEditFont: React.CSSProperties = {
+  fontSize: 15,
+  lineHeight: 1.6,
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  letterSpacing: 'normal',
+  wordSpacing: 'normal',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+};
+
+const editStyles: Record<string, React.CSSProperties> = {
+  editorWrap: {
+    position: 'relative',
+  },
+  highlightOverlay: {
+    ...sharedEditFont,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: '16px 20px 8px',
+    boxSizing: 'border-box',
+    overflow: 'hidden',
+    pointerEvents: 'none',
+  },
+  textarea: {
+    ...sharedEditFont,
+    width: '100%',
+    minHeight: 140,
+    padding: '16px 20px 8px',
+    border: 'none',
+    outline: 'none',
+    resize: 'vertical',
+    boxSizing: 'border-box',
+    background: 'transparent',
+    color: 'transparent',
+    position: 'relative',
+    zIndex: 1,
+  },
+  imageGrid: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    padding: '4px 20px 8px',
+  },
+  imageWrap: {
+    position: 'relative',
+    width: 80,
+    height: 80,
+  },
+  imageThumb: {
+    width: 80,
+    height: 80,
+    objectFit: 'cover',
+    borderRadius: 8,
+    background: '#f5f5f5',
+  },
+  imageRemove: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 20,
+    height: 20,
+    borderRadius: '50%',
+    background: 'rgba(0,0,0,0.5)',
+    color: '#fff',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: 11,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    lineHeight: 1,
+    padding: 0,
+  },
+  toolbar: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    padding: '8px 12px 12px',
+    borderTop: '1px solid #f5f5f5',
+  },
+  toolsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  actionsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  fmtButton: {
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    padding: '4px 6px',
+    fontSize: 14,
+    color: '#666',
+    borderRadius: 4,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 28,
+  },
+  fmtDivider: {
+    width: 1,
+    height: 16,
+    background: '#e0e0e0',
+    margin: '0 2px',
+  },
+  selectWrap: {
+    display: 'flex',
+    alignItems: 'center',
+  },
+  select: {
+    borderRadius: 8,
+    border: '1px solid #e0e0e0',
+    padding: '0 8px',
+    background: '#fff',
+    fontSize: 14,
+    color: '#555',
+    height: 32,
+    boxSizing: 'border-box',
+  },
+  cancelButton: {
+    border: '1px solid #e0e0e0',
+    borderRadius: 8,
+    padding: '0 14px',
+    background: '#fff',
+    cursor: 'pointer',
+    fontSize: 14,
+    height: 32,
+  },
+  saveButton: {
+    border: 'none',
+    borderRadius: '50%',
+    width: 36,
+    height: 36,
+    background: '#31d266',
+    color: '#fff',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
 };

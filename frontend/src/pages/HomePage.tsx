@@ -374,7 +374,9 @@ export const HomePage = () => {
               allTags={allTags.map((t) => t.tag)}
               onOpenMemo={(memo) => window.location.assign(`/memos/${memo.slug}`)}
               onOpenTag={(tag) => window.location.assign(`/tags/${tag}`)}
-              onEditMemo={(memo) => window.location.assign(`/memos/${memo.slug}/edit`)}
+              onSaveEditMemo={(memo, input) => {
+                updateMemoMutation.mutate({ id: memo.id, input });
+              }}
               onRestoreMemo={(memo) => {
                 restoreMemoMutation.mutate(memo.id);
               }}
