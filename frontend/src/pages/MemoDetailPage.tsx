@@ -42,7 +42,9 @@ export const MemoDetailPage = () => {
   return (
     <article style={{ padding: '24px 28px', maxWidth: 680, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-        <button type="button" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: c.textMuted, fontSize: 14, padding: 0 }} onClick={() => navigate('/')}>← 返回</button>
+        {isAuthor ? (
+          <button type="button" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: c.textMuted, fontSize: 14, padding: 0 }} onClick={() => navigate('/')}>← 返回</button>
+        ) : null}
         {isAuthor ? (
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             <button type="button" style={{ border: `1px solid ${c.borderMedium}`, background: c.cardBg, borderRadius: 6, padding: '5px 12px', fontSize: 13, color: c.textTertiary, cursor: 'pointer' }} onClick={() => data.memo.pinnedAt ? unpinMutation.mutate(data.memo.id) : pinMutation.mutate(data.memo.id)}>
