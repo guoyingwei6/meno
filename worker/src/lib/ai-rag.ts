@@ -5,10 +5,11 @@ import type { WorkerBindings } from '../db/client';
 
 const EMBEDDING_MODEL = '@cf/baai/bge-m3';
 const INDEX_BATCH_SIZE = 20;
-const TOP_K = 20;
-const SQL_TOP_K = 20;
-const HISTORY_LIMIT = 6;
-const SNIPPET_LIMIT = 220;
+const TOP_K = 10;
+const SQL_TOP_K = 12;
+const HISTORY_LIMIT = 4;
+const SNIPPET_LIMIT = 320;
+const SYSTEM_PROMPT_TOKEN_BUDGET = 3200;
 
 interface EmbeddingResponse {
   data?: number[][];
@@ -43,6 +44,33 @@ const createSnippet = (content: string) =>
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, SNIPPET_LIMIT);
+
+const estimateTokens = (text: string): number => {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return 0;
+  }
+
+  const cjkChars = (trimmed.match(/[\u4e00-\u9fff]/g) ?? []).length;
+  const latinWords = trimmed
+    .replace(/[\u4e00-\u9fff]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .length;
+  const digitsAndSymbols = trimmed
+    .replace(/[\u4e00-\u9fff]/g, '')
+    .replace(/[A-Za-z]+/g, ' ')
+    .replace(/\s+/g, '')
+    .length;
+
+  return Math.ceil(cjkChars * 1.15 + latinWords * 1.3 + digitsAndSymbols * 0.5);
+};
+
+const formatSourceForPrompt = (source: KnowledgeSource, index: number) =>
+  `资料 ${index + 1} | ${source.displayDate} | ${source.visibility} | /memos/${source.slug}\n标签: ${source.tags.join(', ') || '无'}\n内容摘录: ${source.snippet}`;
+
+const estimateSourceTokens = (source: KnowledgeSource, index: number) =>
+  estimateTokens(formatSourceForPrompt(source, index));
 
 const buildIndexText = (memo: MemoSummary, ocrText = '') => {
   const tags = memo.tags.length > 0 ? `标签: ${memo.tags.join(', ')}` : '标签: 无';
@@ -187,7 +215,7 @@ const parseChatCompletion = async (response: Response): Promise<string> => {
 
 const createSystemPrompt = (sources: KnowledgeSource[]) => {
   const sourceText = sources.length > 0
-    ? sources.map((source, index) => `资料 ${index + 1} | ${source.displayDate} | ${source.visibility} | /memos/${source.slug}\n标签: ${source.tags.join(', ') || '无'}\n内容摘录: ${source.snippet}`).join('\n\n')
+    ? sources.map((source, index) => formatSourceForPrompt(source, index)).join('\n\n')
     : '没有检索到相关笔记。';
 
   return [
@@ -202,6 +230,22 @@ const createSystemPrompt = (sources: KnowledgeSource[]) => {
     '以下是本轮可用的笔记资料：',
     sourceText,
   ].join('\n');
+};
+
+const clipSourcesToBudget = (sources: KnowledgeSource[], budget = SYSTEM_PROMPT_TOKEN_BUDGET): KnowledgeSource[] => {
+  const selected: KnowledgeSource[] = [];
+  let used = 0;
+
+  for (const [index, source] of sources.entries()) {
+    const next = estimateSourceTokens(source, index);
+    if (selected.length > 0 && used + next > budget) {
+      break;
+    }
+    selected.push(source);
+    used += next;
+  }
+
+  return selected;
 };
 
 const lexicalScore = (memo: MemoSummary, terms: string[]): number => {
@@ -281,6 +325,8 @@ export const chatWithKnowledgeBase = async (
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || b.displayDate.localeCompare(a.displayDate))
     .slice(0, TOP_K);
 
+  const budgetedMatches = clipSourcesToBudget(matches);
+
   const endpoint = normalizeAiBaseUrl(config.url);
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -292,7 +338,7 @@ export const chatWithKnowledgeBase = async (
       model: config.model,
       temperature: 0.2,
       messages: [
-        { role: 'system', content: createSystemPrompt(matches) },
+        { role: 'system', content: createSystemPrompt(budgetedMatches) },
         ...history.slice(-HISTORY_LIMIT),
         { role: 'user', content: trimmed },
       ],
@@ -301,6 +347,6 @@ export const chatWithKnowledgeBase = async (
 
   return {
     answer: await parseChatCompletion(response),
-    sources: matches,
+    sources: budgetedMatches,
   };
 };
