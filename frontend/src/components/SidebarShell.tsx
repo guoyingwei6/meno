@@ -324,7 +324,7 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
         </div>
         {authenticated && (
           <div style={styles.navRow}>
-            <span style={styles.iconCellStatic}>✦</span>
+            <span style={styles.iconCellStatic}>🪄</span>
             <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'deepChat' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('deepChat')}>深度对话</button>
           </div>
         )}
