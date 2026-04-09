@@ -2,9 +2,30 @@ import { Hono } from 'hono';
 import { createMemo, trashMemo } from '../db/memo-repository';
 import type { WorkerBindings } from '../db/client';
 import { isApiKeyValid } from '../lib/auth';
+import { removeMemoFromKnowledgeBase, syncMemoToKnowledgeBase } from '../lib/ai-rag';
+import { markMemoImageOcrRemovedByMemo, syncMemoImageOcrTasks } from '../db/memo-image-ocr-repository';
 import { createMemoSlug } from '../lib/slug';
 
 export const quickApiRoutes = new Hono<{ Bindings: WorkerBindings }>();
+
+const isUploadFile = (
+  value: unknown,
+): value is File & { name: string; type: string; stream: () => ReadableStream } => {
+  return typeof value === 'object'
+    && value !== null
+    && 'name' in value
+    && 'type' in value
+    && 'stream' in value
+    && typeof value.stream === 'function';
+};
+
+const swallowKnowledgeBaseError = async (task: Promise<void>) => {
+  try {
+    await task;
+  } catch (error) {
+    console.error('Knowledge base sync failed', error);
+  }
+};
 
 /** 把外部图片 URL 下载后上传到 R2，返回我们自己的 CDN URL；抓取失败的图片直接丢弃 */
 async function mirrorImages(env: WorkerBindings, urls: string[]): Promise<string[]> {
@@ -73,6 +94,8 @@ quickApiRoutes.get('/memos', async (c) => {
     visibility,
     displayDate,
   });
+  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content);
+  await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
 
   return c.json({ memo }, 201);
 });
@@ -118,6 +141,8 @@ quickApiRoutes.post('/memos', async (c) => {
     visibility,
     displayDate,
   });
+  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content);
+  await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
 
   return c.json({ memo }, 201);
 });
@@ -131,7 +156,7 @@ quickApiRoutes.post('/upload', async (c) => {
   const formData = await c.req.formData();
   const file = formData.get('file');
 
-  if (!file || !(file instanceof File)) {
+  if (!isUploadFile(file)) {
     return c.json({ message: 'No file provided' }, 400);
   }
 
@@ -159,5 +184,7 @@ quickApiRoutes.delete('/memos/:slug', async (c) => {
     .first<{ id: number }>();
   if (!row) return c.json({ message: 'Not found' }, 404);
   await trashMemo(c.env.DB, row.id);
+  await markMemoImageOcrRemovedByMemo(c.env.DB, row.id);
+  await swallowKnowledgeBaseError(removeMemoFromKnowledgeBase(c.env, row.id));
   return c.json({ success: true });
 });

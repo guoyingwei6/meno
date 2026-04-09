@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { aiRoutes } from './routes/ai';
 import { authRoutes } from './routes/auth';
 import { dashboardRoutes } from './routes/dashboard';
 import { memoRoutes } from './routes/memos';
@@ -19,6 +20,7 @@ app.use('/api/*', cors({
 app.route('/api/public', publicRoutes);
 app.route('/api', authRoutes);
 app.route('/api', memoRoutes);
+app.route('/api/ai', aiRoutes);
 app.route('/api', uploadRoutes);
 app.route('/api/dashboard', dashboardRoutes);
 app.route('/api/quick', quickApiRoutes);
@@ -42,9 +44,11 @@ app.get('/assets/:key{.+}', async (c) => {
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledEvent, env: { DB: D1Database; ASSETS: R2Bucket }) {
+  async scheduled(_event: ScheduledEvent, env: import('./db/client').WorkerBindings) {
     const { purgeOldTrash, backupMemosToR2 } = await import('./db/memo-repository');
+    const { processMemoImageOcrQueue } = await import('./lib/image-ocr');
     await purgeOldTrash(env.DB, env.ASSETS);
     await backupMemosToR2(env.DB, env.ASSETS);
+    await processMemoImageOcrQueue(env);
   },
 };

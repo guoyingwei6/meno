@@ -155,6 +155,17 @@ export const getAuthorMemoBySlug = async (db: D1Database, slug: string): Promise
   return { ...memo, assets: [] };
 };
 
+export const getAuthorMemoById = async (db: D1Database, id: number): Promise<MemoDetail | null> => {
+  const row = await db.prepare('SELECT * FROM memos WHERE id = ? LIMIT 1').bind(id).first<Record<string, unknown>>();
+
+  if (!row) {
+    return null;
+  }
+
+  const [memo] = await attachTags(db, [mapMemoRow(row)]);
+  return { ...memo, assets: [] };
+};
+
 export const updateMemo = async (
   db: D1Database,
   id: number,
@@ -440,6 +451,53 @@ export const listAuthorMemos = async (db: D1Database, query: AuthorViewQuery): P
 
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const { results } = await db.prepare(`SELECT * FROM memos ${where} ORDER BY pinned_at IS NULL ASC, pinned_at DESC, display_date DESC, created_at DESC`).bind(...params).all();
+
+  return attachTags(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
+};
+
+export const listKnowledgeBaseMemos = async (db: D1Database): Promise<MemoSummary[]> => {
+  const { results } = await db
+    .prepare(
+      "SELECT * FROM memos WHERE deleted_at IS NULL AND visibility IN ('public', 'private', 'draft') ORDER BY id ASC",
+    )
+    .all();
+
+  return attachTags(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
+};
+
+export const searchKnowledgeBaseMemosByTerms = async (db: D1Database, terms: string[]): Promise<MemoSummary[]> => {
+  const normalizedTerms = terms.map((term) => term.trim()).filter(Boolean);
+  if (normalizedTerms.length === 0) {
+    return [];
+  }
+
+  const clauses = normalizedTerms.map(() => (
+    `(content LIKE ? ESCAPE '\\'
+      OR slug LIKE ? ESCAPE '\\'
+      OR id IN (
+        SELECT memo_id
+        FROM memo_tags
+        WHERE tag LIKE ? ESCAPE '\\'
+      ))`
+  ));
+
+  const params: string[] = [];
+  for (const term of normalizedTerms) {
+    const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
+    params.push(pattern, pattern, pattern);
+  }
+
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM memos
+       WHERE deleted_at IS NULL
+         AND visibility IN ('public', 'private', 'draft')
+         AND (${clauses.join(' OR ')})
+       ORDER BY updated_at DESC, created_at DESC
+       LIMIT 60`,
+    )
+    .bind(...params)
+    .all();
 
   return attachTags(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
 };

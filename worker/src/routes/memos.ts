@@ -2,9 +2,19 @@ import { Hono } from 'hono';
 import { createMemo, favoriteMemo, pinMemo, restoreMemo, trashMemo, unfavoriteMemo, unpinMemo, updateMemo } from '../db/memo-repository';
 import type { WorkerBindings } from '../db/client';
 import { isAuthorSession } from '../lib/auth';
+import { removeMemoFromKnowledgeBase, syncMemoToKnowledgeBase } from '../lib/ai-rag';
+import { markMemoImageOcrRemovedByMemo, syncMemoImageOcrTasks } from '../db/memo-image-ocr-repository';
 import { createMemoSlug } from '../lib/slug';
 
 export const memoRoutes = new Hono<{ Bindings: WorkerBindings }>();
+
+const swallowKnowledgeBaseError = async (task: Promise<void>) => {
+  try {
+    await task;
+  } catch (error) {
+    console.error('Knowledge base sync failed', error);
+  }
+};
 
 memoRoutes.post('/memos', async (c) => {
   if (!isAuthorSession(c.req.header('Cookie'))) {
@@ -23,6 +33,8 @@ memoRoutes.post('/memos', async (c) => {
     visibility: body.visibility,
     displayDate: body.displayDate,
   });
+  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content);
+  await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
 
   return c.json({ memo }, 201);
 });
@@ -44,6 +56,12 @@ memoRoutes.patch('/memos/:id', async (c) => {
     return c.json({ message: 'Memo not found' }, 404);
   }
 
+  if (body.content !== undefined) {
+    await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content);
+  }
+
+  await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
+
   return c.json({ memo });
 });
 
@@ -57,6 +75,9 @@ memoRoutes.delete('/memos/:id', async (c) => {
   if (!deleted) {
     return c.json({ message: 'Memo not found' }, 404);
   }
+
+  await markMemoImageOcrRemovedByMemo(c.env.DB, Number(c.req.param('id')));
+  await swallowKnowledgeBaseError(removeMemoFromKnowledgeBase(c.env, Number(c.req.param('id'))));
 
   return c.json({ success: true });
 });
@@ -115,6 +136,9 @@ memoRoutes.post('/memos/:id/restore', async (c) => {
   if (!memo) {
     return c.json({ message: 'Memo not found' }, 404);
   }
+
+  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content);
+  await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
 
   return c.json({ memo });
 });

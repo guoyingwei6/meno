@@ -2,6 +2,9 @@ name = "meno-worker"
 main = "src/index.ts"
 compatibility_date = "2025-03-24"
 
+[ai]
+binding = "AI"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "meno"
@@ -11,6 +14,10 @@ database_id = "your-d1-database-id"
 binding = "ASSETS"
 bucket_name = "meno-assets"
 
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "meno-memos"
+
 [triggers]
 crons = ["0 3 * * *"]
 
@@ -18,6 +25,9 @@ crons = ["0 3 * * *"]
 APP_ORIGIN = "https://your-frontend-domain"
 API_ORIGIN = "https://your-worker-domain"
 ASSET_PUBLIC_BASE_URL = "https://your-worker-domain/api/assets"
+OCR_DAILY_LIMIT = "20"
+OCR_BATCH_SIZE = "5"
+OCR_SEED_BATCH_SIZE = "10"
 GITHUB_ALLOWED_LOGIN = "your-github-username"
 GITHUB_CLIENT_ID = "your-github-oauth-client-id"
 # Secrets (set via `npx wrangler secret put`):
