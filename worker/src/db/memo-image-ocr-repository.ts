@@ -37,8 +37,21 @@ const mapRow = (row: Record<string, unknown>): MemoImageOcrRow => ({
   updatedAt: String(row.updated_at),
 });
 
-export const syncMemoImageOcrTasks = async (db: D1Database, memoId: number, content: string): Promise<void> => {
+export const syncMemoImageOcrTasks = async (db: D1Database, memoId: number, content: string, visibility: 'public' | 'private' | 'draft'): Promise<void> => {
   const now = new Date().toISOString();
+  if (visibility !== 'public') {
+    await db
+      .prepare(
+        `UPDATE memo_image_ocr
+         SET status = 'removed',
+             updated_at = ?
+         WHERE memo_id = ?`,
+      )
+      .bind(now, memoId)
+      .run();
+    return;
+  }
+
   const imageUrls = [...new Set(extractMarkdownImageUrls(content))];
 
   const { results } = await db
@@ -98,7 +111,7 @@ export const seedMissingMemoImageOcrTasks = async (db: D1Database, limit: number
        FROM memos
        WHERE memos.deleted_at IS NULL
          AND memos.has_images = 1
-         AND memos.visibility IN ('public', 'private', 'draft')
+         AND memos.visibility = 'public'
          AND NOT EXISTS (
            SELECT 1
            FROM memo_image_ocr
@@ -128,7 +141,7 @@ export const claimPendingMemoImageOcrTasks = async (db: D1Database, limit: numbe
        INNER JOIN memos ON memos.id = memo_image_ocr.memo_id
        WHERE memo_image_ocr.status IN ('pending', 'failed')
          AND memos.deleted_at IS NULL
-         AND memos.visibility IN ('public', 'private', 'draft')
+         AND memos.visibility = 'public'
          AND (next_retry_at IS NULL OR next_retry_at <= ?)
        ORDER BY memo_image_ocr.updated_at ASC, memo_image_ocr.id ASC
        LIMIT ?`,

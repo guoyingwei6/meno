@@ -45,7 +45,6 @@ export interface DashboardStatsResponse {
     total: number;
     public: number;
     private: number;
-    draft: number;
     trash: number;
     tags: number;
     streakDays: number;
@@ -133,7 +132,7 @@ export const fetchDashboardTags = async (): Promise<TagListResponse> => {
 };
 
 export const fetchDashboardMemos = async (
-  view: 'all' | 'public' | 'private' | 'draft' | 'trash' | 'favorited',
+  view: 'all' | 'public' | 'private' | 'trash' | 'favorited',
   date?: string,
 ): Promise<{ memos: MemoSummary[] }> => {
   const params = new URLSearchParams({ view });
@@ -299,7 +298,7 @@ export const logout = async (): Promise<void> => {
 
 export const updateMemo = async (
   id: number,
-  input: { content?: string; visibility?: 'public' | 'private' | 'draft'; displayDate?: string },
+  input: { content?: string; visibility?: 'public' | 'private'; displayDate?: string },
 ): Promise<{ memo: MemoDetail }> => {
   const response = await fetch(withApiBase(`/api/memos/${id}`), {
     method: 'PATCH',
@@ -317,7 +316,7 @@ export const updateMemo = async (
 
 export const createMemo = async (input: {
   content: string;
-  visibility: 'public' | 'private' | 'draft';
+  visibility: 'public' | 'private';
   displayDate: string;
 }): Promise<{ memo: MemoDetail }> => {
   const response = await fetch(withApiBase('/api/memos'), {

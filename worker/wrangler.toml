@@ -19,7 +19,7 @@ binding = "VECTORIZE"
 index_name = "meno-memos"
 
 [triggers]
-crons = ["0 3 * * *"]
+crons = ["0 * * * *"]
 
 [vars]
 APP_ORIGIN = "https://your-frontend-domain"

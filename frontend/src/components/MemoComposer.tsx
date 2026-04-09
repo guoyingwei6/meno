@@ -5,7 +5,7 @@ import { useTheme, colors } from '../lib/theme';
 
 interface MemoComposerSubmitInput {
   content: string;
-  visibility: 'public' | 'private' | 'draft';
+  visibility: 'public' | 'private';
   displayDate: string;
 }
 
@@ -71,7 +71,7 @@ const restoreTextareaFocus = (textarea: HTMLTextAreaElement | null, cursorPos: n
 
 export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }: MemoComposerProps) => {
   const [content, setContent] = useState('');
-  const [visibility, setVisibility] = useState<'public' | 'private' | 'draft'>('public');
+  const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [displayDate, setDisplayDate] = useState(defaultDisplayDate);
   const [images, setImages] = useState<UploadedImage[]>([]);
   const [tagDropdown, setTagDropdown] = useState<{ suggestions: string[]; top: number; left: number } | null>(null);
@@ -362,7 +362,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
             }}
           />
           <label style={styles.selectWrap}>
-            <select aria-label="可见性" value={visibility} onChange={(event) => setVisibility(event.target.value as 'public' | 'private' | 'draft')} style={{ ...styles.select, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }}>
+            <select aria-label="可见性" value={visibility} onChange={(event) => setVisibility(event.target.value as 'public' | 'private')} style={{ ...styles.select, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }}>
               <option value="public">公开</option>
               <option value="private">私密</option>
             </select>

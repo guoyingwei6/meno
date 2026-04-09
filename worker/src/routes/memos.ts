@@ -33,7 +33,7 @@ memoRoutes.post('/memos', async (c) => {
     visibility: body.visibility,
     displayDate: body.displayDate,
   });
-  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content);
+  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility);
   await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
 
   return c.json({ memo }, 201);
@@ -57,7 +57,7 @@ memoRoutes.patch('/memos/:id', async (c) => {
   }
 
   if (body.content !== undefined) {
-    await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content);
+    await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility);
   }
 
   await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
@@ -137,7 +137,7 @@ memoRoutes.post('/memos/:id/restore', async (c) => {
     return c.json({ message: 'Memo not found' }, 404);
   }
 
-  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content);
+  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility);
   await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
 
   return c.json({ memo });

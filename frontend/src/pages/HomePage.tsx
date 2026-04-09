@@ -98,7 +98,7 @@ export const HomePage = () => {
     queryKey: isAuthor ? ['dashboard-memos', apiView, selectedDate] : ['public-memos', selectedDate],
     queryFn: () => {
       if (isAuthor) {
-        return fetchDashboardMemos(apiView as 'all' | 'public' | 'private' | 'draft' | 'trash' | 'favorited', selectedDate ?? undefined);
+        return fetchDashboardMemos(apiView as 'all' | 'public' | 'private' | 'trash' | 'favorited', selectedDate ?? undefined);
       }
       return fetchPublicMemos(undefined, selectedDate ?? undefined);
     },
@@ -137,7 +137,7 @@ export const HomePage = () => {
   });
 
   const createMemoMutation = useMutation({
-    mutationFn: (input: { content: string; visibility: 'public' | 'private' | 'draft'; displayDate: string }) =>
+    mutationFn: (input: { content: string; visibility: 'public' | 'private'; displayDate: string }) =>
       createMemo(input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['dashboard-memos'] });
@@ -147,7 +147,7 @@ export const HomePage = () => {
   });
 
   const updateMemoMutation = useMutation({
-    mutationFn: (vars: { id: number; input: { content?: string; visibility?: 'public' | 'private' | 'draft'; displayDate?: string } }) =>
+    mutationFn: (vars: { id: number; input: { content?: string; visibility?: 'public' | 'private'; displayDate?: string } }) =>
       updateMemo(vars.id, vars.input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['dashboard-memos'] });

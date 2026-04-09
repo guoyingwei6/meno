@@ -94,7 +94,7 @@ quickApiRoutes.get('/memos', async (c) => {
     visibility,
     displayDate,
   });
-  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content);
+  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility);
   await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
 
   return c.json({ memo }, 201);
@@ -141,7 +141,7 @@ quickApiRoutes.post('/memos', async (c) => {
     visibility,
     displayDate,
   });
-  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content);
+  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility);
   await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
 
   return c.json({ memo }, 201);

@@ -458,7 +458,7 @@ export const listAuthorMemos = async (db: D1Database, query: AuthorViewQuery): P
 export const listKnowledgeBaseMemos = async (db: D1Database): Promise<MemoSummary[]> => {
   const { results } = await db
     .prepare(
-      "SELECT * FROM memos WHERE deleted_at IS NULL AND visibility IN ('public', 'private', 'draft') ORDER BY id ASC",
+      "SELECT * FROM memos WHERE deleted_at IS NULL AND visibility = 'public' ORDER BY id ASC",
     )
     .all();
 
@@ -491,7 +491,7 @@ export const searchKnowledgeBaseMemosByTerms = async (db: D1Database, terms: str
     .prepare(
       `SELECT * FROM memos
        WHERE deleted_at IS NULL
-         AND visibility IN ('public', 'private', 'draft')
+         AND visibility = 'public'
          AND (${clauses.join(' OR ')})
        ORDER BY updated_at DESC, created_at DESC
        LIMIT 60`,

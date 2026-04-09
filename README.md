@@ -40,8 +40,9 @@
 - TopBar 魔杖按钮配置 AI（Base URL / API Key / Model），兼容 OpenAI 接口，配置存于本地 localStorage
 - 支持填写完整 endpoint URL 或 Base URL 两种格式
 - 内置验证按钮，一键测试配置是否可用
-- 侧边栏提供「深度对话」，基于作者全部非回收站笔记做 RAG 检索问答
+- 侧边栏提供「深度对话」，以页面视图打开，基于作者全部非回收站笔记做 RAG 检索问答
 - 支持手动“重建知识库索引”，首次启用时可全量同步历史笔记
+- 支持 OCR 队列状态查看、手动跑一轮 OCR，图片中的文字会持久化后接入知识库索引
 
 ### API
 - Quick API：通过 `X-API-Key` 认证，支持 POST 创建笔记和上传图片
@@ -75,7 +76,10 @@ npm install
 # 初始化 D1 数据库
 cd worker
 npx wrangler d1 create meno
-npx wrangler d1 execute meno --file=src/db/schema.sql
+npx wrangler d1 execute meno --file=migrations/001_init.sql
+npx wrangler d1 execute meno --file=migrations/002_add_pinned.sql
+npx wrangler d1 execute meno --file=migrations/003_add_favorited.sql
+npx wrangler d1 execute meno --file=migrations/004_add_memo_image_ocr.sql
 
 # 创建 R2 存储桶
 npx wrangler r2 bucket create meno-assets
@@ -83,7 +87,9 @@ npx wrangler r2 bucket create meno-assets
 # 创建知识库向量索引
 npx wrangler vectorize create meno-memos --dimensions=1024 --metric=cosine
 
-# 配置 wrangler.toml 中的环境变量
+# 配置 worker/wrangler.local.toml 中的环境变量与绑定
+# 至少需要：D1 / R2 / AI / VECTORIZE / GitHub OAuth / SESSION_SECRET
+
 # 设置 API_TOKEN secret
 echo "your-token" | npx wrangler secret put API_TOKEN
 
@@ -102,9 +108,23 @@ npx wrangler pages deploy dist --project-name=meno
 
 1. 在 `worker/wrangler.local.toml` 中补上 `[ai] binding = "AI"` 和 `[[vectorize]] binding = "VECTORIZE"`。
 2. 确认 `index_name = "meno-memos"`。
-3. 重新部署 Worker。
-4. 作者登录后，点击侧边栏里的“深度对话”。
-5. 先执行一次“重建知识库索引”，再开始提问。
+3. 配好 `SESSION_SECRET`、GitHub OAuth、`API_TOKEN` 等必需配置。
+4. 重新部署 Worker。
+5. 作者登录后，点击侧边栏里的“深度对话”。
+6. 先执行一次“重建知识库索引”，再开始提问。
+
+## OCR 图片文字入库
+
+1. 新增或编辑带图片的笔记时，图片会自动进入 OCR 队列。
+2. 历史图片不会一次性全量 OCR，而是按批次逐步补录。
+3. 可在“深度对话”页查看 OCR 队列状态，并手动跑一轮 OCR。
+4. OCR 成功后，会只增量重建对应那一条 memo 的知识库索引，不会全量重建。
+
+可调参数：
+
+- `OCR_DAILY_LIMIT`：每天最多 OCR 的图片数
+- `OCR_BATCH_SIZE`：单轮最多实际 OCR 的图片数
+- `OCR_SEED_BATCH_SIZE`：单轮最多补入队列的历史 memo 数
 
 ## Quick API 用法
 

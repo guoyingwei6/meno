@@ -15,7 +15,7 @@ interface MemoCardProps {
   isTrash?: boolean;
   onOpen?: (memo: MemoSummary) => void;
   onOpenTag?: (tag: string) => void;
-  onSaveEdit?: (memo: MemoSummary, input: { content: string; visibility: 'public' | 'private' | 'draft'; displayDate: string }) => void;
+  onSaveEdit?: (memo: MemoSummary, input: { content: string; visibility: 'public' | 'private'; displayDate: string }) => void;
   onRestore?: (memo: MemoSummary) => void;
   onChangeVisibility?: (memo: MemoSummary, visibility: 'public' | 'private') => void;
   onDelete?: (memo: MemoSummary) => void;
@@ -84,7 +84,7 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdi
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState('');
   const [editImages, setEditImages] = useState<string[]>([]);
-  const [editVisibility, setEditVisibility] = useState<'public' | 'private' | 'draft'>('public');
+  const [editVisibility, setEditVisibility] = useState<'public' | 'private'>('public');
   const [editDisplayDate, setEditDisplayDate] = useState('');
   const [editTagDropdown, setEditTagDropdown] = useState<{ suggestions: string[]; top: number; left: number } | null>(null);
   const [editTagIndex, setEditTagIndex] = useState(0);
@@ -97,7 +97,7 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdi
   const wordCount = countWords(memo.content);
 
   useEffect(() => {
-    if (lightboxIndex === null || imageUrls.length <= 1) return;
+    if (lightboxIndex === null) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') setLightboxIndex((i) => i === null ? null : (i - 1 + imageUrls.length) % imageUrls.length);
       if (e.key === 'ArrowRight') setLightboxIndex((i) => i === null ? null : (i + 1) % imageUrls.length);
@@ -351,7 +351,8 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdi
     }
     const mod = e.metaKey || e.ctrlKey;
     if (!mod) return;
-    if (e.key === 'b') { e.preventDefault(); editWrapSelection('**', '**'); }
+    if (e.key === 'Enter') { e.preventDefault(); handleSaveEdit(); }
+    else if (e.key === 'b') { e.preventDefault(); editWrapSelection('**', '**'); }
     else if (e.key === 'i') { e.preventDefault(); editWrapSelection('*', '*'); }
     else if (e.key === 'u') { e.preventDefault(); editWrapSelection('<u>', '</u>'); }
   };
@@ -489,10 +490,9 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdi
             <div style={editStyles.actionsRow}>
               <span style={{ ...styles.footerText, color: c.textMuted }}>字数: {editWordCount}</span>
               <label style={editStyles.selectWrap}>
-                <select value={editVisibility} onChange={(e) => setEditVisibility(e.target.value as 'public' | 'private' | 'draft')} style={{ ...editStyles.select, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }}>
+                <select value={editVisibility} onChange={(e) => setEditVisibility(e.target.value as 'public' | 'private')} style={{ ...editStyles.select, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }}>
                   <option value="public">公开</option>
                   <option value="private">私密</option>
-                  <option value="draft">草稿</option>
                 </select>
               </label>
               <input type="date" value={editDisplayDate} onChange={(e) => setEditDisplayDate(e.target.value)} style={{ ...editStyles.select, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }} />

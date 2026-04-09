@@ -152,7 +152,7 @@ export const syncMemoToKnowledgeBase = async (env: WorkerBindings, memoId: numbe
     return;
   }
 
-  if (!['public', 'private', 'draft'].includes(memo.visibility)) {
+  if (memo.visibility !== 'public') {
     await env.VECTORIZE.deleteByIds?.([String(memoId)]);
     return;
   }

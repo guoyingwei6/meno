@@ -11,7 +11,7 @@ interface MemoTimelineProps {
   allTags?: string[];
   onOpenMemo?: (memo: MemoSummary) => void;
   onOpenTag?: (tag: string) => void;
-  onSaveEditMemo?: (memo: MemoSummary, input: { content: string; visibility: 'public' | 'private' | 'draft'; displayDate: string }) => void;
+  onSaveEditMemo?: (memo: MemoSummary, input: { content: string; visibility: 'public' | 'private'; displayDate: string }) => void;
   onRestoreMemo?: (memo: MemoSummary) => void;
   onChangeVisibility?: (memo: MemoSummary, visibility: 'public' | 'private') => void;
   onDeleteMemo?: (memo: MemoSummary) => void;
