@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MemoComposer } from '../components/MemoComposer';
+import { DeepChatModal } from '../components/DeepChatModal';
 import { MemoTimeline } from '../components/MemoTimeline';
 import { SidebarShell } from '../components/SidebarShell';
 import { TimelineHeader } from '../components/TimelineHeader';
@@ -35,7 +36,7 @@ export const HomePage = () => {
   const c = colors(isDark);
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats' | 'favorited'>('all');
+  const [activeView, setActiveView] = useState<'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats' | 'favorited' | 'deepChat'>('all');
   const [reviewSeed, setReviewSeed] = useState(0);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [filters, setFilters] = useState<MemoFilters>({});
@@ -68,7 +69,7 @@ export const HomePage = () => {
     closeSidebarOnMobile();
   };
 
-  const handleSelectView = (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats' | 'favorited') => {
+  const handleSelectView = (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats' | 'favorited' | 'deepChat') => {
     if (view === 'dailyReview') setReviewSeed((s) => s + 1);
     setActiveView(view);
     setSelectedDate(null);
@@ -349,6 +350,8 @@ export const HomePage = () => {
         />
         {activeView === 'stats' ? (
           <StatsView isAuthor={Boolean(isAuthor)} />
+        ) : activeView === 'deepChat' ? (
+          <DeepChatModal embedded onOpenAiConfig={() => setShowAiConfig(true)} />
         ) : (
           <>
             {isAuthor ? <MemoComposer defaultDisplayDate={todayStr} existingTags={allTags} onSubmit={async (input) => {

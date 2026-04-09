@@ -19,13 +19,13 @@ interface SidebarShellProps {
   streakDays?: number;
   activeDate?: string | null;
   calendarDays?: DateCount[];
-  activeView?: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats' | 'favorited';
+  activeView?: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats' | 'favorited' | 'deepChat';
   activeTag?: string | null;
   filters?: MemoFilters;
   tagTree?: TagTreeResult;
   hasOnThisDay?: boolean;
   style?: React.CSSProperties;
-  onSelectView?: (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats' | 'favorited') => void;
+  onSelectView?: (view: 'all' | 'private' | 'trash' | 'onThisDay' | 'dailyReview' | 'stats' | 'favorited' | 'deepChat') => void;
   onSelectDate?: (date: string) => void;
   onSelectTag?: (tag: string | null) => void;
   onChangeFilters?: (filters: MemoFilters) => void;
@@ -307,14 +307,6 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
           </div>
         )}
         <div style={styles.navRow}>
-          <span style={styles.iconCellStatic}>✨</span>
-          <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'onThisDay' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('onThisDay')}>那年今日{hasOnThisDay && activeView !== 'onThisDay' && <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#31d266', marginLeft: 6, verticalAlign: 'middle' }} />}</button>
-        </div>
-        <div style={styles.navRow}>
-          <span style={styles.iconCellStatic}>🎲</span>
-          <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'dailyReview' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('dailyReview')}>每日回顾</button>
-        </div>
-        <div style={styles.navRow}>
           <span style={styles.iconCellStatic}>⭐</span>
           <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'favorited' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('favorited')}>收藏笔记</button>
         </div>
@@ -322,6 +314,20 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
           <span style={styles.iconCellStatic}>🔒</span>
           <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'private' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('private')}>私密笔记</button>
         </div>
+        <div style={styles.navRow}>
+          <span style={styles.iconCellStatic}>✨</span>
+          <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'onThisDay' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('onThisDay')}>那年今日{hasOnThisDay && activeView !== 'onThisDay' && <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#31d266', marginLeft: 6, verticalAlign: 'middle' }} />}</button>
+        </div>
+        <div style={styles.navRow}>
+          <span style={styles.iconCellStatic}>🎲</span>
+          <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'dailyReview' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('dailyReview')}>每日回顾</button>
+        </div>
+        {authenticated && (
+          <div style={styles.navRow}>
+            <span style={styles.iconCellStatic}>✦</span>
+            <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'deepChat' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('deepChat')}>深度对话</button>
+          </div>
+        )}
         <div style={styles.navRow}>
           <span style={styles.iconCellStatic}>📊</span>
           <button type="button" style={{ ...styles.navButton, color: c.textSecondary, ...(activeView === 'stats' ? styles.navButtonPrimary : {}) }} onClick={() => onSelectView?.('stats')}>记录统计</button>

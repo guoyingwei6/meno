@@ -1,8 +1,6 @@
-export interface AiConfig {
-  url: string;
-  apiKey: string;
-  model: string;
-}
+import type { AiConfig } from '../types/shared';
+
+export type { AiConfig };
 
 const KEY = 'meno_ai_config';
 

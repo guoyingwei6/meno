@@ -1,5 +1,17 @@
 import { withApiBase } from './runtime-config';
-import type { MemoDetail, PublicMemoResponse, PublicMemosResponse, MemoSummary, TagListResponse } from '../types/shared';
+import type {
+  AiChatMessage,
+  AiConfig,
+  KnowledgeChatResponse,
+  KnowledgeIndexResponse,
+  MemoDetail,
+  OcrQueueRunResponse,
+  OcrQueueStatus,
+  PublicMemoResponse,
+  PublicMemosResponse,
+  MemoSummary,
+  TagListResponse,
+} from '../types/shared';
 
 export interface MeResponse {
   authenticated: boolean;
@@ -210,6 +222,67 @@ export const fetchPublicRecordStats = async (): Promise<RecordStatsResponse> => 
 export const fetchDashboardRecordStats = async (): Promise<RecordStatsResponse> => {
   const response = await fetch(withApiBase('/api/dashboard/record-stats'), { credentials: 'include' });
   if (!response.ok) throw new Error('Failed to fetch dashboard record stats');
+  return response.json();
+};
+
+export const rebuildKnowledgeIndex = async (): Promise<KnowledgeIndexResponse> => {
+  const response = await fetch(withApiBase('/api/ai/index'), {
+    method: 'POST',
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(payload?.message || 'Failed to rebuild knowledge index');
+  }
+
+  return response.json();
+};
+
+export const chatWithKnowledgeBase = async (
+  question: string,
+  config: AiConfig,
+  history: AiChatMessage[] = [],
+): Promise<KnowledgeChatResponse> => {
+  const response = await fetch(withApiBase('/api/ai/chat'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, config, history }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(payload?.message || 'Failed to chat with knowledge base');
+  }
+
+  return response.json();
+};
+
+export const fetchOcrQueueStatus = async (): Promise<OcrQueueStatus> => {
+  const response = await fetch(withApiBase('/api/ai/ocr/status'), {
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(payload?.message || 'Failed to fetch OCR queue status');
+  }
+
+  return response.json();
+};
+
+export const runOcrQueue = async (): Promise<OcrQueueRunResponse> => {
+  const response = await fetch(withApiBase('/api/ai/ocr/run'), {
+    method: 'POST',
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(payload?.message || 'Failed to run OCR queue');
+  }
+
   return response.json();
 };
 

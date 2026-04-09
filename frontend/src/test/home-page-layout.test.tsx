@@ -107,6 +107,11 @@ describe('HomePage layout', () => {
     expect(screen.getByText('笔记')).toBeInTheDocument();
     expect(screen.getByText('标签')).toBeInTheDocument();
     expect(screen.getByText('全部笔记')).toBeInTheDocument();
+    expect(screen.getByText('收藏笔记')).toBeInTheDocument();
+    expect(screen.getByText('私密笔记')).toBeInTheDocument();
+    expect(screen.getByText('那年今日')).toBeInTheDocument();
+    expect(screen.getByText('每日回顾')).toBeInTheDocument();
+    expect(screen.getByText('记录统计')).toBeInTheDocument();
     expect(screen.getByText('全部标签')).toBeInTheDocument();
     expect(screen.getByText('登录后发布 memo')).toBeInTheDocument();
   });

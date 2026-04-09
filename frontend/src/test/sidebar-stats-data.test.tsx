@@ -47,7 +47,7 @@ beforeEach(() => {
 });
 
 describe('Sidebar real stats', () => {
-  it('renders memo count, tag count and streak days from dashboard stats', async () => {
+  it('renders public memo count, tag count and streak days from dashboard stats', async () => {
     const queryClient = new QueryClient();
 
     render(
@@ -58,7 +58,7 @@ describe('Sidebar real stats', () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText('650')).toBeInTheDocument();
+    expect(await screen.findByText('320')).toBeInTheDocument();
     expect(screen.getByText('34')).toBeInTheDocument();
     expect(screen.getByText('1152')).toBeInTheDocument();
   });
