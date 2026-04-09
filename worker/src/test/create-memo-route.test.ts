@@ -14,7 +14,7 @@ describe('POST /api/memos', () => {
       },
       body: JSON.stringify({
         content: 'Hello #meno',
-        visibility: 'draft',
+        visibility: 'private',
         displayDate: '2026-03-24',
       }),
     }, env);
@@ -23,7 +23,7 @@ describe('POST /api/memos', () => {
     expect(await response.json()).toEqual({ message: 'Unauthorized' });
   });
 
-  it('creates a draft memo for the author session', async () => {
+  it('creates a private memo for the author session', async () => {
     const env = await createTestEnv();
     const response = await app.request('http://localhost/api/memos', {
       method: 'POST',
@@ -33,7 +33,7 @@ describe('POST /api/memos', () => {
       },
       body: JSON.stringify({
         content: 'Hello #meno',
-        visibility: 'draft',
+        visibility: 'private',
         displayDate: '2026-03-24',
       }),
     }, env);
@@ -45,7 +45,7 @@ describe('POST /api/memos', () => {
       expect.objectContaining({
         slug: expect.any(String),
         content: 'Hello #meno',
-        visibility: 'draft',
+        visibility: 'private',
         displayDate: '2026-03-24',
         tags: ['meno'],
       }),

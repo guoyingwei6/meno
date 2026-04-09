@@ -43,7 +43,7 @@ dashboardRoutes.get('/memos/search', async (c) => {
 });
 
 dashboardRoutes.get('/memos', async (c) => {
-  const view = (c.req.query('view') ?? 'all') as 'all' | 'public' | 'private' | 'draft' | 'trash';
+  const view = (c.req.query('view') ?? 'all') as 'all' | 'public' | 'private' | 'trash' | 'favorited';
   const date = c.req.query('date');
   return c.json({ memos: await listAuthorMemos(c.env.DB, { view, date }) });
 });

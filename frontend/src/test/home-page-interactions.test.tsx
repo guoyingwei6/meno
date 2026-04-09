@@ -81,7 +81,7 @@ beforeEach(() => {
       if (url.includes('/api/dashboard/stats')) {
         return new Response(
           JSON.stringify({
-            stats: { total: 2, public: 2, private: 0, draft: 0, trash: 0, tags: 3, streakDays: 5 },
+            stats: { total: 2, public: 2, private: 0, trash: 0, tags: 3, streakDays: 5 },
           }),
           { headers: { 'Content-Type': 'application/json' } },
         );
@@ -185,16 +185,7 @@ describe('HomePage interactions', () => {
       </QueryClientProvider>,
     );
 
-    // 先展开全部笔记子菜单（点击图标按钮）
-    await screen.findByText('全部笔记');
-    fireEvent.click(screen.getByText('📋'));
-
-    // 点击筛选chip：第一次=公开，第二次=私密
-    const filterChip = screen.getByRole('button', { name: '公开/私密' });
-    fireEvent.click(filterChip); // -> 公开
-
-    const publicChip = await screen.findByRole('button', { name: '公开' });
-    fireEvent.click(publicChip); // -> 私密
+    fireEvent.click(await screen.findByRole('button', { name: '私密笔记' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/dashboard/memos?view=private', { credentials: 'include' });
@@ -216,7 +207,7 @@ describe('HomePage interactions', () => {
     fireEvent.click(dayButton);
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenLastCalledWith('/api/dashboard/memos?view=all&date=2026-03-16', { credentials: 'include' });
+      expect(fetch).toHaveBeenLastCalledWith('/api/dashboard/memos?view=public&date=2026-04-16', { credentials: 'include' });
     });
   });
 });

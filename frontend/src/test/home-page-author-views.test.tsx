@@ -119,7 +119,7 @@ beforeEach(() => {
       if (url.includes('/api/dashboard/stats')) {
         return new Response(
           JSON.stringify({
-            stats: { total: 2, public: 1, private: 1, draft: 0, trash: 1, tags: 3, streakDays: 10 },
+            stats: { total: 2, public: 1, private: 1, trash: 1, tags: 3, streakDays: 10 },
           }),
           { headers: { 'Content-Type': 'application/json' } },
         );
@@ -159,13 +159,7 @@ describe('HomePage author views', () => {
     expect((await screen.findAllByText('Second public memo')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Private memo').length).toBeGreaterThan(0);
 
-    // 展开全部笔记的子菜单（点击图标按钮）
-    fireEvent.click(screen.getByText('📋'));
-
-    // 点击筛选chip两次到"私密"
-    fireEvent.click(screen.getByRole('button', { name: '公开/私密' }));
-    const publicChip = await screen.findByRole('button', { name: '公开' });
-    fireEvent.click(publicChip);
+    fireEvent.click(screen.getByRole('button', { name: '私密笔记' }));
 
     await waitFor(() => {
       expect(screen.queryByText('Second public memo')).not.toBeInTheDocument();

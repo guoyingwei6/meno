@@ -14,7 +14,7 @@ describe('memo image ocr queue', () => {
       },
       body: JSON.stringify({
         content: '带图 memo\n![](https://api.meno.guoyingwei.top/api/assets/uploads/test.png)',
-        visibility: 'draft',
+        visibility: 'public',
         displayDate: '2026-03-24',
       }),
     }, env);

@@ -37,7 +37,7 @@ const mapRow = (row: Record<string, unknown>): MemoImageOcrRow => ({
   updatedAt: String(row.updated_at),
 });
 
-export const syncMemoImageOcrTasks = async (db: D1Database, memoId: number, content: string, visibility: 'public' | 'private' | 'draft'): Promise<void> => {
+export const syncMemoImageOcrTasks = async (db: D1Database, memoId: number, content: string, visibility: 'public' | 'private'): Promise<void> => {
   const now = new Date().toISOString();
   if (visibility !== 'public') {
     await db
@@ -125,7 +125,7 @@ export const seedMissingMemoImageOcrTasks = async (db: D1Database, limit: number
 
   let affected = 0;
   for (const row of results ?? []) {
-    await syncMemoImageOcrTasks(db, Number(row.id), String(row.content));
+    await syncMemoImageOcrTasks(db, Number(row.id), String(row.content), 'public');
     affected++;
   }
 

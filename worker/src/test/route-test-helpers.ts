@@ -27,13 +27,6 @@ export const createTestEnv = async () => {
     displayDate: '2026-03-23',
   });
 
-  await createMemo(db, {
-    slug: 'draft-memo-1',
-    content: 'Draft memo #draft-note',
-    visibility: 'draft',
-    displayDate: '2026-03-22',
-  });
-
   const objects = new Map<string, ArrayBuffer>();
   const vectors = new Map<string, { values: number[]; metadata?: Record<string, unknown> }>();
   const bucket = {

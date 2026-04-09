@@ -25,7 +25,7 @@ beforeEach(() => {
 
       if (url.includes('/api/dashboard/stats')) {
         return new Response(JSON.stringify({
-          stats: { total: 12, public: 8, private: 3, draft: 1, trash: 0, tags: 4, streakDays: 20 },
+          stats: { total: 11, public: 8, private: 3, trash: 0, tags: 4, streakDays: 20 },
         }), { headers: { 'Content-Type': 'application/json' } });
       }
 
@@ -80,7 +80,7 @@ beforeEach(() => {
             {
               memoId: 1,
               slug: 'memo-1',
-              visibility: 'private',
+              visibility: 'public',
               displayDate: '2026-04-01',
               tags: ['meno'],
               snippet: '最近一直在整理知识库和标签体系。',
@@ -88,7 +88,7 @@ beforeEach(() => {
             {
               memoId: 2,
               slug: 'memo-2',
-              visibility: 'private',
+              visibility: 'public',
               displayDate: '2026-04-02',
               tags: ['旅行'],
               snippet: '第二条命中资料。',
@@ -104,7 +104,7 @@ beforeEach(() => {
             slug: 'memo-1',
             content: '#meno\n最近一直在整理知识库和标签体系。',
             excerpt: '最近一直在整理知识库和标签体系。',
-            visibility: 'private',
+            visibility: 'public',
             displayDate: '2026-04-01',
             createdAt: '2026-04-01T09:00:00.000Z',
             updatedAt: '2026-04-01T09:00:00.000Z',

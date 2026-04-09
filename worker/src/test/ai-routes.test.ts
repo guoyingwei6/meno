@@ -29,7 +29,7 @@ describe('AI knowledge routes', () => {
 
     expect(response.status).toBe(200);
     const payload = await response.json() as KnowledgeIndexResponse;
-    expect(payload.indexed).toBe(4);
+    expect(payload.indexed).toBe(2);
   });
 
   it('rejects unauthenticated chat access', async () => {
@@ -62,7 +62,7 @@ describe('AI knowledge routes', () => {
         Cookie: 'meno_session=valid-author-session',
       },
       body: JSON.stringify({
-        question: 'private memo 说了什么？',
+        question: 'public memo 说了什么？',
         config: { url: 'https://models.inference.ai.azure.com', apiKey: 'test', model: 'gpt-4o-mini' },
       }),
     }, env);
@@ -71,7 +71,7 @@ describe('AI knowledge routes', () => {
     const payload = await response.json() as KnowledgeChatResponse;
     expect(payload.answer).toBe('这是基于笔记库生成的回答。');
     expect(payload.sources.length).toBeGreaterThan(0);
-    expect(payload.sources.some((source) => source.slug === 'private-memo-1')).toBe(true);
+    expect(payload.sources.some((source) => source.slug === 'public-memo-1')).toBe(true);
   });
 
   it('returns OCR queue status for author session', async () => {
@@ -79,10 +79,10 @@ describe('AI knowledge routes', () => {
     const memo = await createMemo(env.DB, {
       slug: 'ocr-memo',
       content: '![img](https://example.com/test.png)',
-      visibility: 'private',
+      visibility: 'public',
       displayDate: '2026-04-08',
     });
-    await syncMemoImageOcrTasks(env.DB, memo.id, memo.content);
+    await syncMemoImageOcrTasks(env.DB, memo.id, memo.content, memo.visibility);
 
     const response = await app.request('http://localhost/api/ai/ocr/status', {
       headers: { Cookie: 'meno_session=valid-author-session' },
@@ -100,10 +100,10 @@ describe('AI knowledge routes', () => {
     const memo = await createMemo(env.DB, {
       slug: 'ocr-run-memo',
       content: '![img](https://example.com/test.png)',
-      visibility: 'private',
+      visibility: 'public',
       displayDate: '2026-04-08',
     });
-    await syncMemoImageOcrTasks(env.DB, memo.id, memo.content);
+    await syncMemoImageOcrTasks(env.DB, memo.id, memo.content, memo.visibility);
 
     const response = await app.request('http://localhost/api/ai/ocr/run', {
       method: 'POST',
@@ -125,19 +125,19 @@ describe('AI knowledge routes', () => {
     await createMemo(env.DB, {
       slug: 'ocr-seed-1',
       content: '![img](https://example.com/1.png)',
-      visibility: 'private',
+      visibility: 'public',
       displayDate: '2026-04-08',
     });
     await createMemo(env.DB, {
       slug: 'ocr-seed-2',
       content: '![img](https://example.com/2.png)',
-      visibility: 'private',
+      visibility: 'public',
       displayDate: '2026-04-08',
     });
     await createMemo(env.DB, {
       slug: 'ocr-seed-3',
       content: '![img](https://example.com/3.png)',
-      visibility: 'private',
+      visibility: 'public',
       displayDate: '2026-04-08',
     });
 
@@ -162,15 +162,15 @@ describe('AI knowledge routes', () => {
     const queuedMemo = await createMemo(env.DB, {
       slug: 'ocr-queued',
       content: '![img](https://example.com/queued.png)',
-      visibility: 'private',
+      visibility: 'public',
       displayDate: '2026-04-08',
     });
-    await syncMemoImageOcrTasks(env.DB, queuedMemo.id, queuedMemo.content);
+    await syncMemoImageOcrTasks(env.DB, queuedMemo.id, queuedMemo.content, queuedMemo.visibility);
 
     await createMemo(env.DB, {
       slug: 'ocr-unseeded',
       content: '![img](https://example.com/unseeded.png)',
-      visibility: 'private',
+      visibility: 'public',
       displayDate: '2026-04-08',
     });
 

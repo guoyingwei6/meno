@@ -23,7 +23,7 @@ memoRoutes.post('/memos', async (c) => {
 
   const body = await c.req.json<{
     content: string;
-    visibility: 'public' | 'private' | 'draft';
+    visibility: 'public' | 'private';
     displayDate: string;
   }>();
 
@@ -46,7 +46,7 @@ memoRoutes.patch('/memos/:id', async (c) => {
 
   const body = await c.req.json<{
     content?: string;
-    visibility?: 'public' | 'private' | 'draft';
+    visibility?: 'public' | 'private';
     displayDate?: string;
   }>();
 

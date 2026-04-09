@@ -33,7 +33,7 @@ beforeEach(() => {
       if (url.includes('/api/dashboard/stats')) {
         return new Response(
           JSON.stringify({
-            stats: { total: 0, public: 0, private: 0, draft: 0, trash: 0, tags: 0, streakDays: 0 },
+            stats: { total: 0, public: 0, private: 0, trash: 0, tags: 0, streakDays: 0 },
           }),
           { headers: { 'Content-Type': 'application/json' } },
         );

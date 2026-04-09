@@ -23,7 +23,6 @@ beforeEach(() => {
               total: 650,
               public: 320,
               private: 200,
-              draft: 130,
               trash: 7,
               tags: 34,
               streakDays: 1152,

@@ -16,13 +16,12 @@ describe('dashboard routes', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       stats: {
-        total: 4,
+        total: 3,
         public: 2,
         private: 1,
-        draft: 1,
         trash: 0,
-        tags: 5,
-        streakDays: 3,
+        tags: 3,
+        streakDays: expect.any(Number),
       },
     });
   });

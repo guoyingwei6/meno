@@ -57,7 +57,7 @@ describe('routes backed by D1', () => {
         },
         body: JSON.stringify({
           content: 'Created through route #route',
-          visibility: 'draft',
+          visibility: 'private',
           displayDate: '2026-03-26',
         }),
       },
@@ -67,7 +67,7 @@ describe('routes backed by D1', () => {
     expect(createResponse.status).toBe(201);
 
     const listResponse = await app.request(
-      'http://localhost/api/dashboard/memos?view=draft',
+      'http://localhost/api/dashboard/memos?view=private',
       {
         headers: {
           Cookie: 'meno_session=valid-author-session',
@@ -78,6 +78,6 @@ describe('routes backed by D1', () => {
 
     const payload = (await listResponse.json()) as { memos: MemoSummary[] };
     expect(payload.memos.some((memo) => memo.slug)).toBe(true);
-    expect(payload.memos.some((memo) => memo.visibility === 'draft')).toBe(true);
+    expect(payload.memos.some((memo) => memo.visibility === 'private')).toBe(true);
   });
 });

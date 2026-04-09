@@ -66,7 +66,7 @@ quickApiRoutes.use('/*', async (c, next) => {
 quickApiRoutes.get('/memos', async (c) => {
   const decode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
   const content = decode(c.req.query('content') || '');
-  const visibility = (c.req.query('visibility') || 'public') as 'public' | 'private' | 'draft';
+  const visibility = (c.req.query('visibility') || 'public') as 'public' | 'private';
   const today = new Date().toISOString().slice(0, 10);
   const displayDate = (() => {
     const d = c.req.query('display_date');
@@ -116,7 +116,7 @@ quickApiRoutes.get('/memos', async (c) => {
 quickApiRoutes.post('/memos', async (c) => {
   const body = await c.req.json<{
     content: string;
-    visibility?: 'public' | 'private' | 'draft';
+    visibility?: 'public' | 'private';
     images?: string[];
     displayDate?: string;
   }>();

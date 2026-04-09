@@ -12,7 +12,7 @@ describe('API auth credentials', () => {
 
     await fetchMe();
     await fetchDashboardMemos('all');
-    await createMemo({ content: 'hello', visibility: 'draft', displayDate: '2026-03-25' });
+    await createMemo({ content: 'hello', visibility: 'private', displayDate: '2026-03-25' });
     await logout();
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/me', expect.objectContaining({ credentials: 'include' }));

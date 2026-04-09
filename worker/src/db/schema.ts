@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS memos (
   updated_at TEXT NOT NULL,
   published_at TEXT,
   deleted_at TEXT,
+  pinned_at TEXT,
+  favorited_at TEXT,
   previous_visibility TEXT,
   excerpt TEXT NOT NULL,
   has_images INTEGER NOT NULL DEFAULT 0,

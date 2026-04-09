@@ -27,13 +27,13 @@ const initialMemos = {
   ],
 };
 
-const draftResponse = {
+const createdResponse = {
   memo: {
     id: 5,
-    slug: 'created-draft',
+    slug: 'created-private',
     content: '新笔记 #newtag',
     excerpt: '新笔记 #newtag',
-    visibility: 'draft',
+    visibility: 'private',
     displayDate: '2026-03-25',
     createdAt: '2026-03-25T10:00:00.000Z',
     updatedAt: '2026-03-25T10:00:00.000Z',
@@ -79,14 +79,14 @@ beforeEach(() => {
       if (url.includes('/api/dashboard/stats')) {
         return new Response(
           JSON.stringify({
-            stats: { total: createCalled ? 2 : 1, public: 1, private: 0, draft: createCalled ? 1 : 0, trash: 0, tags: createCalled ? 3 : 2, streakDays: 392 },
+            stats: { total: createCalled ? 2 : 1, public: 1, private: createCalled ? 1 : 0, trash: 0, tags: createCalled ? 3 : 2, streakDays: 392 },
           }),
           { headers: { 'Content-Type': 'application/json' } },
         );
       }
 
       if (url.includes('/api/dashboard/memos')) {
-        return new Response(JSON.stringify(createCalled ? { memos: [draftResponse.memo, ...initialMemos.memos] } : initialMemos), {
+        return new Response(JSON.stringify(createCalled ? { memos: [createdResponse.memo, ...initialMemos.memos] } : initialMemos), {
           headers: { 'Content-Type': 'application/json' },
         });
       }
@@ -97,7 +97,7 @@ beforeEach(() => {
         expect(body.content).toBe('新笔记 #newtag');
         expect(body.visibility).toBe('public');
         // displayDate 使用当天日期（todayStr），不硬编码具体日期
-        return new Response(JSON.stringify(draftResponse), {
+        return new Response(JSON.stringify(createdResponse), {
           headers: { 'Content-Type': 'application/json' },
           status: 201,
         });
@@ -115,7 +115,7 @@ beforeEach(() => {
 });
 
 describe('HomePage create memo flow', () => {
-  it('creates a draft memo and refreshes the list', async () => {
+  it('creates a private memo and refreshes the list', async () => {
     const queryClient = new QueryClient();
 
     render(

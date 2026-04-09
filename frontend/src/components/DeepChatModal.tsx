@@ -111,7 +111,7 @@ export const DeepChatModal = ({ onClose, onOpenAiConfig, embedded = false }: Dee
         <div style={styles.header}>
           <div>
             <h3 style={{ margin: 0, fontSize: 18, color: c.textPrimary }}>深度对话</h3>
-            <p style={{ margin: '6px 0 0', fontSize: 13, color: c.textMuted }}>基于你的全部非回收站笔记检索回答，支持追问。</p>
+            <p style={{ margin: '6px 0 0', fontSize: 13, color: c.textMuted }}>仅基于你的公开笔记检索回答，支持追问。</p>
           </div>
           {!embedded && onClose && <button type="button" onClick={onClose} style={{ ...styles.closeButton, color: c.textTertiary }}>×</button>}
         </div>
@@ -159,7 +159,7 @@ export const DeepChatModal = ({ onClose, onOpenAiConfig, embedded = false }: Dee
               <br />
               “过去写过哪些和 tag 管理相关的想法？”
               <br />
-              “帮我总结私密笔记里关于产品方向的线索”
+              “帮我总结公开笔记里关于产品方向的线索”
             </div>
           ) : messages.map((message, index) => (
             <div key={`${message.role}-${index}`} style={{ ...styles.messageCard, background: message.role === 'assistant' ? c.cardBg : c.accentLight }}>

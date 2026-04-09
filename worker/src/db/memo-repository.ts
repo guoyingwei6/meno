@@ -9,7 +9,7 @@ interface CreateMemoInput {
 }
 
 interface AuthorViewQuery {
-  view: 'all' | 'public' | 'private' | 'draft' | 'trash' | 'favorited';
+  view: 'all' | 'public' | 'private' | 'trash' | 'favorited';
   date?: string;
 }
 
@@ -524,7 +524,6 @@ export const getDashboardStats = async (db: D1Database): Promise<{
   total: number;
   public: number;
   private: number;
-  draft: number;
   trash: number;
   tags: number;
   streakDays: number;
@@ -532,7 +531,6 @@ export const getDashboardStats = async (db: D1Database): Promise<{
   const total = await db.prepare("SELECT COUNT(*) as count FROM memos WHERE deleted_at IS NULL").first<{ count: number }>();
   const publicCount = await db.prepare("SELECT COUNT(*) as count FROM memos WHERE visibility = 'public' AND deleted_at IS NULL").first<{ count: number }>();
   const privateCount = await db.prepare("SELECT COUNT(*) as count FROM memos WHERE visibility = 'private' AND deleted_at IS NULL").first<{ count: number }>();
-  const draftCount = await db.prepare("SELECT COUNT(*) as count FROM memos WHERE visibility = 'draft' AND deleted_at IS NULL").first<{ count: number }>();
   const trashCount = await db.prepare("SELECT COUNT(*) as count FROM memos WHERE deleted_at IS NOT NULL").first<{ count: number }>();
   const tagsCount = await db
     .prepare(
@@ -550,7 +548,6 @@ export const getDashboardStats = async (db: D1Database): Promise<{
     total: total?.count ?? 0,
     public: publicCount?.count ?? 0,
     private: privateCount?.count ?? 0,
-    draft: draftCount?.count ?? 0,
     trash: trashCount?.count ?? 0,
     tags: tagsCount?.count ?? 0,
     streakDays: spanRow?.days ?? 0,

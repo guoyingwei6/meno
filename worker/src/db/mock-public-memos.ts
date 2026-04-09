@@ -58,25 +58,6 @@ const initialMemos: MemoSummary[] = [
     tagCount: 1,
     tags: ['private-note'],
   },
-  {
-    id: 4,
-    slug: 'draft-memo-1',
-    content: 'Draft memo',
-    excerpt: 'Draft memo',
-    visibility: 'draft',
-    displayDate: '2026-03-22',
-    createdAt: '2026-03-22T07:00:00.000Z',
-    updatedAt: '2026-03-22T07:00:00.000Z',
-    publishedAt: null,
-    deletedAt: null,
-    pinnedAt: null,
-    favoritedAt: null,
-    previousVisibility: null,
-    hasImages: false,
-    imageCount: 0,
-    tagCount: 1,
-    tags: ['draft-note'],
-  },
 ];
 
 let memos = structuredClone(initialMemos) as MemoSummary[];
@@ -152,7 +133,7 @@ export const restoreMockMemo = (id: number): MemoDetail | null => {
 export const listAllMockMemos = (): MemoSummary[] => memos;
 
 export const listAuthorMemos = (
-  view: 'all' | 'public' | 'private' | 'draft' | 'trash' = 'all',
+  view: 'all' | 'public' | 'private' | 'trash' = 'all',
   date?: string,
 ): MemoSummary[] => {
   let filteredMemos: MemoSummary[];
@@ -206,7 +187,6 @@ export const getAuthorStats = () => {
     total: activeMemos.length,
     public: activeMemos.filter((memo) => memo.visibility === 'public').length,
     private: activeMemos.filter((memo) => memo.visibility === 'private').length,
-    draft: activeMemos.filter((memo) => memo.visibility === 'draft').length,
     trash: allMemos.filter((memo) => memo.deletedAt !== null).length,
     tags: uniqueTags.size,
   };

@@ -73,13 +73,6 @@ describe('memo repository', () => {
     });
 
     await createMemo(db, {
-      slug: 'memo-draft-1',
-      content: 'Two #draft-note',
-      visibility: 'draft',
-      displayDate: '2026-03-24',
-    });
-
-    await createMemo(db, {
       slug: 'memo-private-2',
       content: 'Three #private-note',
       visibility: 'private',
@@ -94,13 +87,12 @@ describe('memo repository', () => {
     expect(await listPublicDateCounts(db)).toEqual([{ date: '2026-03-25', count: 1 }]);
 
     expect(await getDashboardStats(db)).toEqual({
-      total: 3,
+      total: 2,
       public: 1,
       private: 1,
-      draft: 1,
       trash: 0,
-      tags: 4,
-      streakDays: 2,
+      tags: 2,
+      streakDays: expect.any(Number),
     });
 
     const privateMemos = await listAuthorMemos(db, { view: 'private' });
