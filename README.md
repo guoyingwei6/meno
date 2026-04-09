@@ -40,6 +40,8 @@
 - TopBar 魔杖按钮配置 AI（Base URL / API Key / Model），兼容 OpenAI 接口，配置存于本地 localStorage
 - 支持填写完整 endpoint URL 或 Base URL 两种格式
 - 内置验证按钮，一键测试配置是否可用
+- 侧边栏提供「深度对话」，基于作者全部非回收站笔记做 RAG 检索问答
+- 支持手动“重建知识库索引”，首次启用时可全量同步历史笔记
 
 ### API
 - Quick API：通过 `X-API-Key` 认证，支持 POST 创建笔记和上传图片
@@ -53,6 +55,7 @@
 | 后端 | Cloudflare Workers + Hono |
 | 数据库 | Cloudflare D1 (SQLite) |
 | 图床 | Cloudflare R2 |
+| 检索 | Cloudflare Vectorize + Workers AI |
 | 认证 | GitHub OAuth + Session |
 | 部署 | Cloudflare Pages + Workers |
 
@@ -77,6 +80,9 @@ npx wrangler d1 execute meno --file=src/db/schema.sql
 # 创建 R2 存储桶
 npx wrangler r2 bucket create meno-assets
 
+# 创建知识库向量索引
+npx wrangler vectorize create meno-memos --dimensions=1024 --metric=cosine
+
 # 配置 wrangler.toml 中的环境变量
 # 设置 API_TOKEN secret
 echo "your-token" | npx wrangler secret put API_TOKEN
@@ -91,6 +97,14 @@ npx wrangler pages deploy dist --project-name=meno
 ```
 
 详细配置参考 `docs/` 目录。
+
+## 知识库启用
+
+1. 在 `worker/wrangler.local.toml` 中补上 `[ai] binding = "AI"` 和 `[[vectorize]] binding = "VECTORIZE"`。
+2. 确认 `index_name = "meno-memos"`。
+3. 重新部署 Worker。
+4. 作者登录后，点击侧边栏里的“深度对话”。
+5. 先执行一次“重建知识库索引”，再开始提问。
 
 ## Quick API 用法
 
