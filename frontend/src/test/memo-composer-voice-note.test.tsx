@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoComposer } from '../components/MemoComposer';
+import { ThemeProvider } from '../lib/theme';
 
 describe('MemoComposer voice note flow', () => {
   afterEach(() => {
@@ -283,6 +284,53 @@ describe('MemoComposer voice note flow', () => {
           mimeType: 'audio/mp4',
         }),
       }));
+    });
+  });
+
+  it('uses dark theme styles for voice action buttons', async () => {
+    const stream = {
+      getTracks: () => [{ stop: vi.fn() }],
+    } as unknown as MediaStream;
+    const getUserMedia = vi.fn(async () => stream);
+    const mediaRecorder = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      mimeType: 'audio/webm',
+      ondataavailable: null as ((event: BlobEvent) => void) | null,
+      onstop: null as (() => void) | null,
+    };
+
+    window.localStorage.setItem('meno-theme', 'dark');
+    Object.defineProperty(window, 'matchMedia', {
+      value: vi.fn().mockReturnValue({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {
+        mediaDevices: {
+          getUserMedia,
+        },
+      },
+      configurable: true,
+    });
+    vi.stubGlobal('MediaRecorder', vi.fn(() => mediaRecorder));
+
+    render(
+      <ThemeProvider>
+        <MemoComposer defaultDisplayDate="2026-04-13" onSubmit={vi.fn(async () => undefined)} />
+      </ThemeProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '录音' }));
+
+    const cancelButton = await screen.findByRole('button', { name: '取消录音' });
+    expect(cancelButton).toHaveStyle({
+      background: 'rgb(42, 42, 42)',
+      color: 'rgb(232, 232, 232)',
     });
   });
 

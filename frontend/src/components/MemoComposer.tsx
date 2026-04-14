@@ -583,14 +583,14 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
         </div>
       ) : null}
       {recordingState !== 'idle' || audioDraft ? (
-        <div style={styles.voicePanel}>
+        <div style={{ ...styles.voicePanel, background: c.inputBg }}>
           {recordingState === 'recording' ? (
             <>
-              <div style={styles.voiceStatus}>正在录音 {formatDuration(recordingDurationMs)}</div>
-              <button type="button" style={styles.voiceGhostButton} onClick={cancelRecording}>
+              <div style={{ ...styles.voiceStatus, color: c.textTertiary }}>正在录音 {formatDuration(recordingDurationMs)}</div>
+              <button type="button" style={{ ...styles.voiceGhostButton, background: c.cardBg, color: c.textPrimary, borderColor: c.borderMedium }} onClick={cancelRecording}>
                 取消录音
               </button>
-              <button type="button" style={styles.voiceActionButton} onClick={stopRecording}>
+              <button type="button" style={{ ...styles.voiceActionButton, background: c.cardBg, color: c.textPrimary, borderColor: c.borderMedium }} onClick={stopRecording}>
                 停止录音
               </button>
             </>
@@ -598,12 +598,12 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
           {audioDraft ? (
             <>
               <audio controls src={audioDraft.previewUrl} style={styles.voicePlayer} />
-              {transcriptText ? <div style={styles.transcriptPreview}>{transcriptText}</div> : null}
+              {transcriptText ? <div style={{ ...styles.transcriptPreview, color: c.textTertiary }}>{transcriptText}</div> : null}
               <div style={styles.voiceActions}>
-                <button type="button" style={styles.voiceGhostButton} onClick={resetVoiceDraft}>
+                <button type="button" style={{ ...styles.voiceGhostButton, background: c.cardBg, color: c.textPrimary, borderColor: c.borderMedium }} onClick={resetVoiceDraft}>
                   取消
                 </button>
-                <button type="button" style={styles.voiceGhostButton} onClick={startRecording} disabled={submitting}>
+                <button type="button" style={{ ...styles.voiceGhostButton, background: c.cardBg, color: c.textPrimary, borderColor: c.borderMedium }} onClick={startRecording} disabled={submitting}>
                   重录
                 </button>
                 <button
