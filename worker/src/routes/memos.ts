@@ -6,6 +6,7 @@ import { isAuthorSession } from '../lib/auth';
 import { removeMemoFromKnowledgeBase, syncMemoToKnowledgeBase } from '../lib/ai-rag';
 import { markMemoImageOcrRemovedByMemo, syncMemoImageOcrTasks } from '../db/memo-image-ocr-repository';
 import { createMemoSlug } from '../lib/slug';
+import { processVoiceNoteByMemoId } from '../lib/voice-transcription';
 
 export const memoRoutes = new Hono<{ Bindings: WorkerBindings }>();
 
@@ -14,6 +15,14 @@ const swallowKnowledgeBaseError = async (task: Promise<void>) => {
     await task;
   } catch (error) {
     console.error('Knowledge base sync failed', error);
+  }
+};
+
+const getWaitUntil = (c: { executionCtx?: ExecutionContext }) => {
+  try {
+    return c.executionCtx?.waitUntil?.bind(c.executionCtx) ?? null;
+  } catch {
+    return null;
   }
 };
 
@@ -68,6 +77,9 @@ memoRoutes.post('/memos', async (c) => {
   }
   await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility);
   await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
+  if (voiceNote && voiceNote.transcriptStatus === 'pending') {
+    getWaitUntil(c)?.(processVoiceNoteByMemoId(c.env, memo.id));
+  }
 
   return c.json({ memo: voiceNote ? { ...memo, voiceNote } : memo }, 201);
 });

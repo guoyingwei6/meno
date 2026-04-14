@@ -1,6 +1,7 @@
 import type { WorkerBindings } from '../db/client';
 import { getAuthorMemoById, updateMemo } from '../db/memo-repository';
-import { listMemoVoiceNotesByStatuses, updateMemoVoiceNoteTranscript } from '../db/memo-voice-note-repository';
+import { getMemoVoiceNoteByMemoId, listMemoVoiceNotesByStatuses, updateMemoVoiceNoteTranscript } from '../db/memo-voice-note-repository';
+import type { MemoVoiceNote } from '../../../shared/src/types';
 
 const TRANSCRIPTION_MODEL = '@cf/openai/whisper-large-v3-turbo';
 
@@ -29,62 +30,73 @@ const extractTranscriptText = (response: unknown) => {
   return null;
 };
 
+export const processVoiceNote = async (env: WorkerBindings, voiceNote: MemoVoiceNote) => {
+  if (!env.AI?.run) {
+    await updateMemoVoiceNoteTranscript(env.DB, voiceNote.memoId, {
+      transcriptStatus: 'not_available',
+      transcriptError: 'No transcription engine configured',
+      transcriptCompletedAt: new Date().toISOString(),
+    });
+    return;
+  }
+
+  const startedAt = new Date().toISOString();
+
+  await updateMemoVoiceNoteTranscript(env.DB, voiceNote.memoId, {
+    transcriptStatus: 'processing',
+    transcriptError: null,
+    transcriptStartedAt: startedAt,
+    transcriptAttempts: voiceNote.transcriptAttempts + 1,
+  });
+
+  try {
+    const object = await env.ASSETS.get(voiceNote.objectKey);
+    if (!object) {
+      throw new Error('Voice note audio asset not found');
+    }
+
+    const audioBuffer = await object.arrayBuffer();
+    const result = await env.AI.run(TRANSCRIPTION_MODEL, {
+      audio: toBase64(audioBuffer),
+    });
+    const transcriptText = extractTranscriptText(result);
+
+    if (!transcriptText) {
+      throw new Error('Workers AI returned an empty transcript');
+    }
+
+    await updateMemoVoiceNoteTranscript(env.DB, voiceNote.memoId, {
+      transcriptStatus: 'done',
+      transcriptText,
+      transcriptSource: 'workers-ai',
+      transcriptError: null,
+      transcriptCompletedAt: new Date().toISOString(),
+    });
+
+    const memo = await getAuthorMemoById(env.DB, voiceNote.memoId);
+    if (memo && memo.content.trim() === '') {
+      await updateMemo(env.DB, voiceNote.memoId, { content: transcriptText });
+    }
+  } catch (error) {
+    await updateMemoVoiceNoteTranscript(env.DB, voiceNote.memoId, {
+      transcriptStatus: 'failed',
+      transcriptError: error instanceof Error ? error.message : 'Voice transcription failed',
+      transcriptCompletedAt: new Date().toISOString(),
+    });
+  }
+};
+
+export const processVoiceNoteByMemoId = async (env: WorkerBindings, memoId: number) => {
+  const voiceNote = await getMemoVoiceNoteByMemoId(env.DB, memoId);
+  if (!voiceNote) return;
+  if (!['pending', 'processing'].includes(voiceNote.transcriptStatus)) return;
+  await processVoiceNote(env, voiceNote);
+};
+
 export const processVoiceNoteQueue = async (env: WorkerBindings) => {
   const pending = await listMemoVoiceNotesByStatuses(env.DB, ['pending', 'processing'], 20);
 
   for (const voiceNote of pending) {
-    if (!env.AI?.run) {
-      await updateMemoVoiceNoteTranscript(env.DB, voiceNote.memoId, {
-        transcriptStatus: 'not_available',
-        transcriptError: 'No transcription engine configured',
-        transcriptCompletedAt: new Date().toISOString(),
-      });
-      continue;
-    }
-
-    const startedAt = new Date().toISOString();
-
-    await updateMemoVoiceNoteTranscript(env.DB, voiceNote.memoId, {
-      transcriptStatus: 'processing',
-      transcriptError: null,
-      transcriptStartedAt: startedAt,
-      transcriptAttempts: voiceNote.transcriptAttempts + 1,
-    });
-
-    try {
-      const object = await env.ASSETS.get(voiceNote.objectKey);
-      if (!object) {
-        throw new Error('Voice note audio asset not found');
-      }
-
-      const audioBuffer = await object.arrayBuffer();
-      const result = await env.AI.run(TRANSCRIPTION_MODEL, {
-        audio: toBase64(audioBuffer),
-      });
-      const transcriptText = extractTranscriptText(result);
-
-      if (!transcriptText) {
-        throw new Error('Workers AI returned an empty transcript');
-      }
-
-      await updateMemoVoiceNoteTranscript(env.DB, voiceNote.memoId, {
-        transcriptStatus: 'done',
-        transcriptText,
-        transcriptSource: 'workers-ai',
-        transcriptError: null,
-        transcriptCompletedAt: new Date().toISOString(),
-      });
-
-      const memo = await getAuthorMemoById(env.DB, voiceNote.memoId);
-      if (memo && memo.content.trim() === '') {
-        await updateMemo(env.DB, voiceNote.memoId, { content: transcriptText });
-      }
-    } catch (error) {
-      await updateMemoVoiceNoteTranscript(env.DB, voiceNote.memoId, {
-        transcriptStatus: 'failed',
-        transcriptError: error instanceof Error ? error.message : 'Voice transcription failed',
-        transcriptCompletedAt: new Date().toISOString(),
-      });
-    }
+    await processVoiceNote(env, voiceNote);
   }
 };
