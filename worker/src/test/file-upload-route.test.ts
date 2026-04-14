@@ -49,4 +49,38 @@ describe('POST /api/uploads', () => {
     expect(row?.original_url).toContain('https://api.meno.guoyingwei.top/api/assets/uploads/');
     expect(row?.mime_type).toBe('image/png');
   });
+
+  it('serves uploaded audio assets with byte-range support', async () => {
+    const env = await createTestEnv();
+    const form = new FormData();
+    form.append('file', new File(['0123456789'], 'hello.m4a', { type: 'audio/mp4' }));
+
+    const uploadResponse = await app.request(
+      'http://localhost/api/uploads',
+      {
+        method: 'POST',
+        headers: {
+          Cookie: 'meno_session=valid-author-session',
+        },
+        body: form,
+      },
+      env,
+    );
+
+    const payload = (await uploadResponse.json()) as { objectKey: string };
+    const assetResponse = await app.request(
+      `http://localhost/api/assets/${payload.objectKey}`,
+      {
+        headers: {
+          Range: 'bytes=0-3',
+        },
+      },
+      env,
+    );
+
+    expect(assetResponse.status).toBe(206);
+    expect(assetResponse.headers.get('accept-ranges')).toBe('bytes');
+    expect(assetResponse.headers.get('content-range')).toBe('bytes 0-3/10');
+    expect(await assetResponse.text()).toBe('0123');
+  });
 });

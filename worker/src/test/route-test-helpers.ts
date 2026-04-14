@@ -39,15 +39,31 @@ export const createTestEnv = async () => {
     delete: async (key: string) => {
       objects.delete(key);
     },
-    get: async (key: string) => {
+    get: async (key: string, options?: { range?: { offset?: number; length?: number; suffix?: number } }) => {
       const value = objects.get(key);
       if (!value) {
         return null;
       }
 
+      let output = value;
+      const range = options?.range;
+      if (range) {
+        if (typeof range.suffix === 'number') {
+          output = value.slice(Math.max(value.byteLength - range.suffix, 0));
+        } else {
+          const offset = range.offset ?? 0;
+          const length = range.length ?? value.byteLength - offset;
+          output = value.slice(offset, offset + length);
+        }
+      }
+
       return {
-        arrayBuffer: async () => value,
-        httpMetadata: { contentType: 'image/png' },
+        arrayBuffer: async () => output,
+        body: new Blob([output]).stream(),
+        httpEtag: 'test-etag',
+        writeHttpMetadata: (headers: Headers) => {
+          headers.set('content-type', key.endsWith('.m4a') ? 'audio/mp4' : 'image/png');
+        },
       } as unknown as R2ObjectBody;
     },
     list: async ({ prefix }: { prefix?: string } = {}) => ({
