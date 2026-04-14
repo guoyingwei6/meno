@@ -64,12 +64,37 @@ interface BrowserSpeechRecognitionConstructor {
   new (): BrowserSpeechRecognition;
 }
 
+interface BrowserMediaRecorderConstructor {
+  new (stream: MediaStream, options?: MediaRecorderOptions): MediaRecorder;
+  isTypeSupported?: (mimeType: string) => boolean;
+}
+
 const getApiBase = () => (globalThis as typeof globalThis & { __MENO_API_BASE_URL__?: string }).__MENO_API_BASE_URL__ || '';
 const formatDuration = (durationMs: number) => {
   const totalSeconds = Math.max(Math.floor(durationMs / 1000), 0);
   const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
   const seconds = (totalSeconds % 60).toString().padStart(2, '0');
   return `${minutes}:${seconds}`;
+};
+
+const getPreferredRecordingMimeType = () => {
+  const mediaRecorder = MediaRecorder as unknown as BrowserMediaRecorderConstructor;
+  const candidates = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'];
+
+  for (const mimeType of candidates) {
+    if (!mediaRecorder.isTypeSupported || mediaRecorder.isTypeSupported(mimeType)) {
+      return mimeType;
+    }
+  }
+
+  return undefined;
+};
+
+const getAudioFileExtension = (mimeType: string) => {
+  if (mimeType.includes('mp4')) return 'm4a';
+  if (mimeType.includes('mpeg')) return 'mp3';
+  if (mimeType.includes('ogg')) return 'ogg';
+  return 'webm';
 };
 
 /** Renders text with #tags in green and code blocks with background — sits behind transparent textarea */
@@ -288,7 +313,8 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
 
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const preferredMimeType = getPreferredRecordingMimeType();
+      const recorder = preferredMimeType ? new MediaRecorder(stream, { mimeType: preferredMimeType }) : new MediaRecorder(stream);
       const SpeechRecognitionCtor = getSpeechRecognitionConstructor();
       const recognition = SpeechRecognitionCtor ? new SpeechRecognitionCtor() : null;
       const startedAt = Date.now();
@@ -418,7 +444,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
       let voiceNote: MemoComposerSubmitInput['voiceNote'];
 
       if (currentAudioDraft) {
-        const extension = currentAudioDraft.mimeType.includes('mpeg') ? 'mp3' : 'webm';
+        const extension = getAudioFileExtension(currentAudioDraft.mimeType);
         const file = new File([currentAudioDraft.blob], `voice-note.${extension}`, { type: currentAudioDraft.mimeType });
         const upload = await uploadAudio(file);
         voiceNote = {

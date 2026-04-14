@@ -216,6 +216,76 @@ describe('MemoComposer voice note flow', () => {
     expect(trackStop).toHaveBeenCalled();
   });
 
+  it('prefers mp4 recording on mobile-compatible browsers and uploads an m4a file', async () => {
+    const onSubmit = vi.fn(async () => undefined);
+    const stream = {
+      getTracks: () => [{ stop: vi.fn() }],
+    } as unknown as MediaStream;
+    const getUserMedia = vi.fn(async () => stream);
+    const mediaRecorder = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      mimeType: 'audio/mp4',
+      ondataavailable: null as ((event: BlobEvent) => void) | null,
+      onstop: null as (() => void) | null,
+    };
+    const mediaRecorderCtor = vi.fn(() => mediaRecorder);
+    Object.assign(mediaRecorderCtor, {
+      isTypeSupported: vi.fn((mimeType: string) => mimeType === 'audio/mp4'),
+    });
+
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {
+        mediaDevices: {
+          getUserMedia,
+        },
+      },
+      configurable: true,
+    });
+    vi.stubGlobal('MediaRecorder', mediaRecorderCtor);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      url: 'https://cdn.example.com/uploads/voice.m4a',
+      objectKey: 'uploads/voice.m4a',
+      fileName: 'voice.m4a',
+    }), { headers: { 'Content-Type': 'application/json' } })));
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn(() => 'blob:voice-note'),
+      revokeObjectURL: vi.fn(),
+    });
+
+    render(<MemoComposer defaultDisplayDate="2026-04-13" onSubmit={onSubmit} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '录音' }));
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true }));
+    expect(mediaRecorderCtor).toHaveBeenCalledWith(stream, { mimeType: 'audio/mp4' });
+
+    fireEvent.click(await screen.findByRole('button', { name: '停止录音' }));
+
+    await act(async () => {
+      mediaRecorder.ondataavailable?.({
+        data: new Blob(['voice'], { type: 'audio/mp4' }),
+      } as BlobEvent);
+      mediaRecorder.onstop?.();
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: '保存语音笔记' }));
+
+    await waitFor(async () => {
+      const [, request] = vi.mocked(fetch).mock.calls[0] ?? [];
+      const body = request?.body as FormData;
+      const uploadedFile = body.get('file');
+      expect(uploadedFile).toBeInstanceOf(File);
+      expect((uploadedFile as File).name).toBe('voice-note.m4a');
+      expect((uploadedFile as File).type).toBe('audio/mp4');
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        voiceNote: expect.objectContaining({
+          mimeType: 'audio/mp4',
+        }),
+      }));
+    });
+  });
+
   it('preserves the existing reviewed draft when re-record setup fails', async () => {
     const initialTrackStop = vi.fn();
     const initialStream = {
