@@ -36,6 +36,9 @@ export const createTestEnv = async () => {
       }
       return { key } as R2Object;
     },
+    delete: async (key: string) => {
+      objects.delete(key);
+    },
     get: async (key: string) => {
       const value = objects.get(key);
       if (!value) {
@@ -47,12 +50,20 @@ export const createTestEnv = async () => {
         httpMetadata: { contentType: 'image/png' },
       } as unknown as R2ObjectBody;
     },
+    list: async ({ prefix }: { prefix?: string } = {}) => ({
+      objects: Array.from(objects.keys())
+        .filter((key) => (prefix ? key.startsWith(prefix) : true))
+        .map((key) => ({ key })),
+    }),
   } as unknown as R2Bucket;
 
   const ai = {
-    run: async (_model: string, input: { text?: string[] }) => ({
-      data: (input.text ?? []).map((text, index) => [text.length, index + 1, text.includes('private') ? 2 : 1]),
-    }),
+    run: async (_model: string, input: unknown) => {
+      const texts = (input as { text?: string[] })?.text ?? [];
+      return {
+        data: texts.map((text, index) => [text.length, index + 1, text.includes('private') ? 2 : 1]),
+      };
+    },
     toMarkdown: async () => ({
       format: 'markdown',
       data: '图片中的测试文字',
@@ -60,11 +71,12 @@ export const createTestEnv = async () => {
   };
 
   const vectorize = {
-    upsert: async (items: Array<{ id: string; values: number[]; metadata?: Record<string, unknown> }>) => {
-      for (const item of items) {
+    upsert: async (items: unknown[]) => {
+      const typedItems = items as Array<{ id: string; values: number[]; metadata?: Record<string, unknown> }>;
+      for (const item of typedItems) {
         vectors.set(item.id, { values: item.values, metadata: item.metadata });
       }
-      return { count: items.length };
+      return { count: typedItems.length };
     },
     query: async (_vector: number[], _options?: Record<string, unknown>) => ({
       matches: Array.from(vectors.entries()).map(([id, entry], index) => ({

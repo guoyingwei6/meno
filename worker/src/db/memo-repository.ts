@@ -1,5 +1,6 @@
-import type { MemoDetail, MemoSummary, MemoVisibility } from '../types';
+import type { MemoDetail, MemoSummary, MemoVisibility } from '../../../shared/src/types';
 import { parseTags } from '../lib/tag-parser';
+import { attachMemoVoiceNotes } from './memo-voice-note-repository';
 
 interface CreateMemoInput {
   slug: string;
@@ -59,6 +60,11 @@ const attachTags = async (db: D1Database, memos: MemoSummary[]) => {
   return memos.map((memo) => ({ ...memo, tags: tagsByMemo.get(memo.id) ?? [] }));
 };
 
+const attachRelations = async (db: D1Database, memos: MemoSummary[]) => {
+  const taggedMemos = await attachTags(db, memos);
+  return attachMemoVoiceNotes(db, taggedMemos);
+};
+
 export const createMemo = async (db: D1Database, input: CreateMemoInput): Promise<MemoDetail> => {
   const now = new Date().toISOString();
   const tags = parseTags(input.content);
@@ -109,7 +115,7 @@ export const listPublicMemos = async (db: D1Database, query: { tag?: string; dat
     .bind(...params)
     .all();
 
-  return attachTags(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
+  return attachRelations(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
 };
 
 export const searchPublicMemos = async (db: D1Database, q: string): Promise<MemoSummary[]> => {
@@ -118,7 +124,7 @@ export const searchPublicMemos = async (db: D1Database, q: string): Promise<Memo
     .prepare('SELECT * FROM memos WHERE visibility = ? AND deleted_at IS NULL AND content LIKE ? ORDER BY display_date DESC, created_at DESC LIMIT 50')
     .bind('public', pattern)
     .all();
-  return attachTags(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
+  return attachRelations(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
 };
 
 export const searchAuthorMemos = async (db: D1Database, q: string): Promise<MemoSummary[]> => {
@@ -127,7 +133,7 @@ export const searchAuthorMemos = async (db: D1Database, q: string): Promise<Memo
     .prepare('SELECT * FROM memos WHERE deleted_at IS NULL AND content LIKE ? ORDER BY display_date DESC, created_at DESC LIMIT 50')
     .bind(pattern)
     .all();
-  return attachTags(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
+  return attachRelations(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
 };
 
 export const getPublicMemoBySlug = async (db: D1Database, slug: string): Promise<MemoDetail | null> => {
@@ -140,7 +146,7 @@ export const getPublicMemoBySlug = async (db: D1Database, slug: string): Promise
     return null;
   }
 
-  const [memo] = await attachTags(db, [mapMemoRow(row)]);
+  const [memo] = await attachRelations(db, [mapMemoRow(row)]);
   return { ...memo, assets: [] };
 };
 
@@ -151,7 +157,7 @@ export const getAuthorMemoBySlug = async (db: D1Database, slug: string): Promise
     return null;
   }
 
-  const [memo] = await attachTags(db, [mapMemoRow(row)]);
+  const [memo] = await attachRelations(db, [mapMemoRow(row)]);
   return { ...memo, assets: [] };
 };
 
@@ -162,7 +168,7 @@ export const getAuthorMemoById = async (db: D1Database, id: number): Promise<Mem
     return null;
   }
 
-  const [memo] = await attachTags(db, [mapMemoRow(row)]);
+  const [memo] = await attachRelations(db, [mapMemoRow(row)]);
   return { ...memo, assets: [] };
 };
 
@@ -208,7 +214,7 @@ export const updateMemo = async (
   const row = await db.prepare('SELECT * FROM memos WHERE id = ? LIMIT 1').bind(id).first<Record<string, unknown>>();
   if (!row) return null;
 
-  const [memo] = await attachTags(db, [mapMemoRow(row)]);
+  const [memo] = await attachRelations(db, [mapMemoRow(row)]);
   return { ...memo, assets: [] };
 };
 
@@ -217,7 +223,7 @@ export const pinMemo = async (db: D1Database, id: number): Promise<MemoDetail | 
   await db.prepare('UPDATE memos SET pinned_at = ? WHERE id = ? AND deleted_at IS NULL').bind(now, id).run();
   const row = await db.prepare('SELECT * FROM memos WHERE id = ? LIMIT 1').bind(id).first<Record<string, unknown>>();
   if (!row) return null;
-  const [memo] = await attachTags(db, [mapMemoRow(row)]);
+  const [memo] = await attachRelations(db, [mapMemoRow(row)]);
   return { ...memo, assets: [] };
 };
 
@@ -225,7 +231,7 @@ export const unpinMemo = async (db: D1Database, id: number): Promise<MemoDetail 
   await db.prepare('UPDATE memos SET pinned_at = NULL WHERE id = ? AND deleted_at IS NULL').bind(id).run();
   const row = await db.prepare('SELECT * FROM memos WHERE id = ? LIMIT 1').bind(id).first<Record<string, unknown>>();
   if (!row) return null;
-  const [memo] = await attachTags(db, [mapMemoRow(row)]);
+  const [memo] = await attachRelations(db, [mapMemoRow(row)]);
   return { ...memo, assets: [] };
 };
 
@@ -234,7 +240,7 @@ export const favoriteMemo = async (db: D1Database, id: number): Promise<MemoDeta
   await db.prepare('UPDATE memos SET favorited_at = ? WHERE id = ? AND deleted_at IS NULL').bind(now, id).run();
   const row = await db.prepare('SELECT * FROM memos WHERE id = ? LIMIT 1').bind(id).first<Record<string, unknown>>();
   if (!row) return null;
-  const [memo] = await attachTags(db, [mapMemoRow(row)]);
+  const [memo] = await attachRelations(db, [mapMemoRow(row)]);
   return { ...memo, assets: [] };
 };
 
@@ -242,7 +248,7 @@ export const unfavoriteMemo = async (db: D1Database, id: number): Promise<MemoDe
   await db.prepare('UPDATE memos SET favorited_at = NULL WHERE id = ? AND deleted_at IS NULL').bind(id).run();
   const row = await db.prepare('SELECT * FROM memos WHERE id = ? LIMIT 1').bind(id).first<Record<string, unknown>>();
   if (!row) return null;
-  const [memo] = await attachTags(db, [mapMemoRow(row)]);
+  const [memo] = await attachRelations(db, [mapMemoRow(row)]);
   return { ...memo, assets: [] };
 };
 
@@ -264,7 +270,7 @@ export const restoreMemo = async (db: D1Database, id: number): Promise<MemoDetai
     return null;
   }
 
-  const [memo] = await attachTags(db, [mapMemoRow(row)]);
+  const [memo] = await attachRelations(db, [mapMemoRow(row)]);
   return { ...memo, assets: [] };
 };
 
@@ -452,7 +458,7 @@ export const listAuthorMemos = async (db: D1Database, query: AuthorViewQuery): P
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const { results } = await db.prepare(`SELECT * FROM memos ${where} ORDER BY pinned_at IS NULL ASC, pinned_at DESC, display_date DESC, created_at DESC`).bind(...params).all();
 
-  return attachTags(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
+  return attachRelations(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
 };
 
 export const listKnowledgeBaseMemos = async (db: D1Database): Promise<MemoSummary[]> => {
@@ -462,7 +468,7 @@ export const listKnowledgeBaseMemos = async (db: D1Database): Promise<MemoSummar
     )
     .all();
 
-  return attachTags(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
+  return attachRelations(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
 };
 
 export const searchKnowledgeBaseMemosByTerms = async (db: D1Database, terms: string[]): Promise<MemoSummary[]> => {
@@ -499,7 +505,7 @@ export const searchKnowledgeBaseMemosByTerms = async (db: D1Database, terms: str
     .bind(...params)
     .all();
 
-  return attachTags(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
+  return attachRelations(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
 };
 
 export const listAuthorTagCounts = async (db: D1Database): Promise<Array<{ tag: string; count: number }>> => {

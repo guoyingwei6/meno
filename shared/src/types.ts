@@ -1,5 +1,22 @@
 export type MemoVisibility = 'public' | 'private';
 
+export interface MemoVoiceNote {
+  memoId: number;
+  objectKey: string;
+  audioUrl: string;
+  mimeType: string;
+  durationMs: number;
+  transcriptStatus: 'pending' | 'processing' | 'done' | 'failed' | 'not_available';
+  transcriptText: string | null;
+  transcriptSource: string | null;
+  transcriptError: string | null;
+  transcriptAttempts: number;
+  transcriptStartedAt: string | null;
+  transcriptCompletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MemoSummary {
   id: number;
   slug: string;
@@ -18,6 +35,7 @@ export interface MemoSummary {
   imageCount: number;
   tagCount: number;
   tags: string[];
+  voiceNote?: MemoVoiceNote;
 }
 
 export interface MemoDetail extends MemoSummary {

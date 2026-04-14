@@ -51,6 +51,20 @@ export interface DashboardStatsResponse {
   };
 }
 
+export interface CreateMemoVoiceNoteInput {
+  objectKey: string;
+  audioUrl: string;
+  mimeType: string;
+  durationMs: number;
+}
+
+export interface CreateMemoInput {
+  content: string;
+  visibility: 'public' | 'private';
+  displayDate: string;
+  voiceNote?: CreateMemoVoiceNoteInput;
+}
+
 export const fetchPublicMemos = async (tag?: string, date?: string): Promise<PublicMemosResponse> => {
   const params = new URLSearchParams();
   if (tag) params.set('tag', tag);
@@ -314,11 +328,7 @@ export const updateMemo = async (
   return response.json();
 };
 
-export const createMemo = async (input: {
-  content: string;
-  visibility: 'public' | 'private';
-  displayDate: string;
-}): Promise<{ memo: MemoDetail }> => {
+export const createMemo = async (input: CreateMemoInput): Promise<{ memo: MemoDetail }> => {
   const response = await fetch(withApiBase('/api/memos'), {
     method: 'POST',
     credentials: 'include',

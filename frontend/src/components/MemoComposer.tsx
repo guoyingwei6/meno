@@ -7,6 +7,12 @@ interface MemoComposerSubmitInput {
   content: string;
   visibility: 'public' | 'private';
   displayDate: string;
+  voiceNote?: {
+    objectKey: string;
+    audioUrl: string;
+    mimeType: string;
+    durationMs: number;
+  };
 }
 
 interface MemoComposerProps {
@@ -20,7 +26,22 @@ interface UploadedImage {
   name: string;
 }
 
+interface AudioDraft {
+  blob: Blob;
+  previewUrl: string;
+  durationMs: number;
+  mimeType: string;
+}
+
+type RecordingState = 'idle' | 'recording' | 'review' | 'saving';
+
 const getApiBase = () => (globalThis as typeof globalThis & { __MENO_API_BASE_URL__?: string }).__MENO_API_BASE_URL__ || '';
+const formatDuration = (durationMs: number) => {
+  const totalSeconds = Math.max(Math.floor(durationMs / 1000), 0);
+  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+  const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${seconds}`;
+};
 
 /** Renders text with #tags in green and code blocks with background — sits behind transparent textarea */
 const HighlightOverlay = ({ text, textColor, isDark }: { text: string; textColor: string; isDark: boolean }) => {
@@ -74,6 +95,10 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [displayDate, setDisplayDate] = useState(defaultDisplayDate);
   const [images, setImages] = useState<UploadedImage[]>([]);
+  const [recordingState, setRecordingState] = useState<RecordingState>('idle');
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
+  const [recordingDurationMs, setRecordingDurationMs] = useState(0);
+  const [audioDraft, setAudioDraft] = useState<AudioDraft | null>(null);
   const [tagDropdown, setTagDropdown] = useState<{ suggestions: string[]; top: number; left: number } | null>(null);
   const [tagIndex, setTagIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -83,6 +108,25 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const editorWrapRef = useRef<HTMLDivElement | null>(null);
   const dismissedTagMatchRef = useRef<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const isRecordingSupported = Boolean(navigator.mediaDevices?.getUserMedia) && typeof MediaRecorder !== 'undefined';
+
+  const revokeAudioDraftUrl = (draft: AudioDraft | null) => {
+    if (draft) URL.revokeObjectURL(draft.previewUrl);
+  };
+
+  const clearAudioDraft = () => {
+    setAudioDraft((current) => {
+      revokeAudioDraftUrl(current);
+      return null;
+    });
+  };
+
+  const stopMediaStream = () => {
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+  };
 
   const updateTagSuggestions = (value: string, cursorPos: number) => {
     const ta = textareaRef.current;
@@ -162,6 +206,84 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     setImages((prev) => [...prev, { url: payload.url, name: file.name }]);
   };
 
+  const uploadAudio = async (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await fetch(`${getApiBase()}/api/uploads`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    });
+    return response.json() as Promise<{ url: string; objectKey: string; fileName: string }>;
+  };
+
+  const resetVoiceDraft = () => {
+    clearAudioDraft();
+    mediaRecorderRef.current = null;
+    stopMediaStream();
+    setRecordingStartedAt(null);
+    setRecordingDurationMs(0);
+    setRecordingState('idle');
+  };
+
+  const cancelRecording = () => {
+    mediaRecorderRef.current = null;
+    stopMediaStream();
+    setRecordingStartedAt(null);
+    setRecordingDurationMs(0);
+    setRecordingState(audioDraft ? 'review' : 'idle');
+  };
+
+  const startRecording = async () => {
+    if (!isRecordingSupported || recordingState === 'recording' || submitting) return;
+
+    let stream: MediaStream | null = null;
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const startedAt = Date.now();
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunks.push(event.data);
+      };
+      recorder.onstop = () => {
+        const mimeType = recorder.mimeType || 'audio/webm';
+        const blob = new Blob(chunks, { type: mimeType });
+        setAudioDraft({
+          blob,
+          previewUrl: URL.createObjectURL(blob),
+          durationMs: Math.max(Date.now() - startedAt, 0),
+          mimeType,
+        });
+        mediaRecorderRef.current = null;
+        stopMediaStream();
+        setRecordingStartedAt(null);
+        setRecordingDurationMs(0);
+        setRecordingState('review');
+      };
+
+      recorder.start();
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      clearAudioDraft();
+      setRecordingStartedAt(startedAt);
+      setRecordingDurationMs(0);
+      setRecordingState('recording');
+    } catch {
+      stream?.getTracks().forEach((track) => track.stop());
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      return;
+    }
+    mediaRecorderRef.current?.stop();
+  };
+
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -210,16 +332,41 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     const textPart = content.trim();
     const imagePart = images.map((img) => `![](${img.url})`).join('\n');
     const fullContent = [textPart, imagePart].filter(Boolean).join('\n');
-    if (!fullContent || submitting) return;
+    if ((!fullContent && !audioDraft) || submitting || recordingState === 'recording') return;
+    const currentAudioDraft = audioDraft;
+    let submitted = false;
     setSubmitting(true);
+    setRecordingState(currentAudioDraft ? 'saving' : 'idle');
     try {
-      await onSubmit({ content: fullContent, visibility, displayDate });
+      let voiceNote: MemoComposerSubmitInput['voiceNote'];
+
+      if (currentAudioDraft) {
+        const extension = currentAudioDraft.mimeType.includes('mpeg') ? 'mp3' : 'webm';
+        const file = new File([currentAudioDraft.blob], `voice-note.${extension}`, { type: currentAudioDraft.mimeType });
+        const upload = await uploadAudio(file);
+        voiceNote = {
+          objectKey: upload.objectKey,
+          audioUrl: upload.url,
+          mimeType: currentAudioDraft.mimeType,
+          durationMs: currentAudioDraft.durationMs,
+        };
+      }
+
+      await onSubmit({ content: fullContent, visibility, displayDate, voiceNote });
       setContent('');
       setVisibility('public');
       setDisplayDate(defaultDisplayDate);
       setImages([]);
+      clearAudioDraft();
+      mediaRecorderRef.current = null;
+      stopMediaStream();
+      setRecordingStartedAt(null);
+      setRecordingDurationMs(0);
+      setRecordingState('idle');
+      submitted = true;
     } finally {
       setSubmitting(false);
+      if (!submitted) setRecordingState(currentAudioDraft ? 'review' : 'idle');
     }
   };
 
@@ -257,6 +404,20 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
   }, [tagDropdown]);
+
+  useEffect(() => {
+    if (recordingState !== 'recording' || recordingStartedAt === null) return;
+    const tick = () => setRecordingDurationMs(Date.now() - recordingStartedAt);
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => window.clearInterval(timer);
+  }, [recordingState, recordingStartedAt]);
+
+  useEffect(() => () => {
+    revokeAudioDraftUrl(audioDraft);
+    mediaRecorderRef.current = null;
+    stopMediaStream();
+  }, [audioDraft]);
 
   return (
     <>
@@ -309,6 +470,42 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
           ))}
         </div>
       ) : null}
+      {recordingState !== 'idle' || audioDraft ? (
+        <div style={styles.voicePanel}>
+          {recordingState === 'recording' ? (
+            <>
+              <div style={styles.voiceStatus}>正在录音 {formatDuration(recordingDurationMs)}</div>
+              <button type="button" style={styles.voiceGhostButton} onClick={cancelRecording}>
+                取消录音
+              </button>
+              <button type="button" style={styles.voiceActionButton} onClick={stopRecording}>
+                停止录音
+              </button>
+            </>
+          ) : null}
+          {audioDraft ? (
+            <>
+              <audio controls src={audioDraft.previewUrl} style={styles.voicePlayer} />
+              <div style={styles.voiceActions}>
+                <button type="button" style={styles.voiceGhostButton} onClick={resetVoiceDraft}>
+                  取消
+                </button>
+                <button type="button" style={styles.voiceGhostButton} onClick={startRecording} disabled={submitting}>
+                  重录
+                </button>
+                <button
+                  type="button"
+                  style={{ ...styles.voicePrimaryButton, ...(submitting ? styles.disabledButton : null) }}
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                >
+                  保存语音笔记
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      ) : null}
       <div style={{ ...styles.toolbar, borderTopColor: c.borderLight }}>
         <div style={styles.toolsRow}>
           <button type="button" style={{ ...styles.fmtButton, color: '#3aa864', fontWeight: 700 }} title="添加标签" onClick={() => {
@@ -344,6 +541,17 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="2" y="8" fill="#666" stroke="none" fontSize="8" fontFamily="sans-serif">1</text><text x="2" y="14" fill="#666" stroke="none" fontSize="8" fontFamily="sans-serif">2</text><text x="2" y="20" fill="#666" stroke="none" fontSize="8" fontFamily="sans-serif">3</text></svg>
           </button>
           <span style={styles.fmtDivider} />
+          <button
+            type="button"
+            style={{ ...styles.toolIcon, ...(!isRecordingSupported ? styles.disabledToolIcon : null) }}
+            title={isRecordingSupported ? '录音' : '当前浏览器不支持录音'}
+            aria-label="录音"
+            aria-disabled={isRecordingSupported ? undefined : 'true'}
+            onClick={startRecording}
+            disabled={!isRecordingSupported || recordingState === 'recording' || submitting}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v3"/><path d="M8 21h8"/></svg>
+          </button>
           <button type="button" style={styles.toolIcon} title="上传图片" onClick={() => fileInputRef.current?.click()}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
           </button>
@@ -513,6 +721,61 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 4,
     display: 'flex',
     alignItems: 'center',
+  },
+  disabledToolIcon: {
+    opacity: 0.45,
+    cursor: 'not-allowed',
+  },
+  voicePanel: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+    padding: '8px 20px 12px',
+  },
+  voiceStatus: {
+    fontSize: 14,
+    color: '#666',
+    flex: '1 1 180px',
+  },
+  voicePlayer: {
+    width: '100%',
+    minWidth: 0,
+  },
+  voiceActions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    width: '100%',
+  },
+  voiceActionButton: {
+    border: '1px solid #e0e0e0',
+    background: '#fff',
+    borderRadius: 999,
+    padding: '8px 14px',
+    fontSize: 14,
+    cursor: 'pointer',
+  },
+  voiceGhostButton: {
+    border: '1px solid #e0e0e0',
+    background: '#fff',
+    borderRadius: 999,
+    padding: '8px 14px',
+    fontSize: 14,
+    cursor: 'pointer',
+  },
+  voicePrimaryButton: {
+    border: 'none',
+    background: '#31d266',
+    color: '#fff',
+    borderRadius: 999,
+    padding: '8px 14px',
+    fontSize: 14,
+    cursor: 'pointer',
+  },
+  disabledButton: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
   },
   selectWrap: {
     display: 'flex',

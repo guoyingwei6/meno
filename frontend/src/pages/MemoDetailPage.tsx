@@ -5,6 +5,13 @@ import { fetchAuthorMemo, fetchMe, fetchPublicMemo, pinMemo as pinMemoApi, unpin
 import { stripTagSyntax } from '../lib/content';
 import { useTheme, colors } from '../lib/theme';
 
+const VoiceNoteBlock = ({ audioUrl, pending }: { audioUrl: string; pending: boolean }) => (
+  <div style={detailStyles.voiceBlock}>
+    <audio controls preload="none" src={audioUrl} style={detailStyles.voiceAudio} />
+    {pending ? <p style={detailStyles.voicePending}>语音已保存，等待转写</p> : null}
+  </div>
+);
+
 export const MemoDetailPage = () => {
   const { slug = '' } = useParams();
   const navigate = useNavigate();
@@ -62,6 +69,12 @@ export const MemoDetailPage = () => {
         ))}
       </div>
       <div style={{ borderRadius: 12, background: c.cardBg, border: `1px solid ${c.border}`, padding: '16px 20px' }}>
+        {data.memo.voiceNote ? (
+          <VoiceNoteBlock
+            audioUrl={data.memo.voiceNote.audioUrl}
+            pending={data.memo.voiceNote.transcriptStatus !== 'done'}
+          />
+        ) : null}
         <ReactMarkdown
           components={{
             img: ({ src = '', alt = '' }) => <img src={src} alt={alt || 'memo image'} style={{ maxWidth: '100%', borderRadius: 8, margin: '8px 0' }} />,
@@ -83,4 +96,24 @@ export const MemoDetailPage = () => {
       </div>
     </article>
   );
+};
+
+const detailStyles: Record<string, React.CSSProperties> = {
+  voiceBlock: {
+    marginBottom: 16,
+    padding: '12px 14px',
+    borderRadius: 12,
+    background: 'rgba(0,0,0,0.04)',
+  },
+  voiceAudio: {
+    width: '100%',
+    minWidth: 0,
+    display: 'block',
+  },
+  voicePending: {
+    margin: '10px 0 0',
+    fontSize: 13,
+    lineHeight: 1.6,
+    color: '#8a8a8a',
+  },
 };

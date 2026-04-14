@@ -20,4 +20,44 @@ describe('API auth credentials', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/memos', expect.objectContaining({ method: 'POST', credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/auth/logout', expect.objectContaining({ method: 'POST', credentials: 'include' }));
   });
+
+  it('serializes voiceNote in createMemo requests', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ memo: null }), {
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createMemo({
+      content: 'hello with voice note',
+      visibility: 'private',
+      displayDate: '2026-03-25',
+      voiceNote: {
+        objectKey: 'voice-notes/hello.m4a',
+        audioUrl: 'https://cdn.example.com/voice-notes/hello.m4a',
+        mimeType: 'audio/mp4',
+        durationMs: 1234,
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/memos',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        body: JSON.stringify({
+          content: 'hello with voice note',
+          visibility: 'private',
+          displayDate: '2026-03-25',
+          voiceNote: {
+            objectKey: 'voice-notes/hello.m4a',
+            audioUrl: 'https://cdn.example.com/voice-notes/hello.m4a',
+            mimeType: 'audio/mp4',
+            durationMs: 1234,
+          },
+        }),
+      }),
+    );
+  });
 });

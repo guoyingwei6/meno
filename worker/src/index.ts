@@ -47,8 +47,10 @@ export default {
   async scheduled(_event: ScheduledEvent, env: import('./db/client').WorkerBindings) {
     const { purgeOldTrash, backupMemosToR2 } = await import('./db/memo-repository');
     const { processMemoImageOcrQueue } = await import('./lib/image-ocr');
+    const { processVoiceNoteQueue } = await import('./lib/voice-transcription');
     await purgeOldTrash(env.DB, env.ASSETS);
     await backupMemosToR2(env.DB, env.ASSETS);
     await processMemoImageOcrQueue(env);
+    await processVoiceNoteQueue(env);
   },
 };

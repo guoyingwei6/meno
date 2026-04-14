@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { createMemo, favoriteMemo, pinMemo, restoreMemo, trashMemo, unfavoriteMemo, unpinMemo, updateMemo } from '../db/memo-repository';
+import { upsertMemoVoiceNote } from '../db/memo-voice-note-repository';
 import type { WorkerBindings } from '../db/client';
 import { isAuthorSession } from '../lib/auth';
 import { removeMemoFromKnowledgeBase, syncMemoToKnowledgeBase } from '../lib/ai-rag';
@@ -25,6 +26,12 @@ memoRoutes.post('/memos', async (c) => {
     content: string;
     visibility: 'public' | 'private';
     displayDate: string;
+    voiceNote?: {
+      objectKey: string;
+      audioUrl: string;
+      mimeType: string;
+      durationMs: number;
+    };
   }>();
 
   const memo = await createMemo(c.env.DB, {
@@ -33,10 +40,32 @@ memoRoutes.post('/memos', async (c) => {
     visibility: body.visibility,
     displayDate: body.displayDate,
   });
+  let voiceNote = null;
+
+  if (body.voiceNote) {
+    try {
+      voiceNote = await upsertMemoVoiceNote(c.env.DB, {
+        memoId: memo.id,
+        objectKey: body.voiceNote.objectKey,
+        audioUrl: body.voiceNote.audioUrl,
+        mimeType: body.voiceNote.mimeType,
+        durationMs: body.voiceNote.durationMs,
+        transcriptStatus: 'pending',
+      });
+    } catch (error) {
+      try {
+        await c.env.DB.prepare('DELETE FROM memo_tags WHERE memo_id = ?').bind(memo.id).run();
+        await c.env.DB.prepare('DELETE FROM memos WHERE id = ?').bind(memo.id).run();
+      } catch (cleanupError) {
+        console.error('Failed to clean up memo after voice note creation failed', cleanupError);
+      }
+      throw error;
+    }
+  }
   await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility);
   await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
 
-  return c.json({ memo }, 201);
+  return c.json({ memo: voiceNote ? { ...memo, voiceNote } : memo }, 201);
 });
 
 memoRoutes.patch('/memos/:id', async (c) => {

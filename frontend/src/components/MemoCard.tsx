@@ -70,6 +70,17 @@ const EditHighlightOverlay = ({ text, textColor, isDark }: { text: string; textC
   );
 };
 
+const VoiceNoteBlock = ({ voiceNote, isDark }: { voiceNote?: MemoSummary['voiceNote']; isDark: boolean }) => {
+  if (!voiceNote) return null;
+
+  return (
+    <div style={{ ...styles.voiceBlock, background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}>
+      <audio controls preload="none" src={voiceNote.audioUrl} style={styles.voiceAudio} />
+      {voiceNote.transcriptStatus !== 'done' ? <p style={styles.voicePending}>语音已保存，等待转写</p> : null}
+    </div>
+  );
+};
+
 export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdit, onRestore, onChangeVisibility, onDelete, allTags, onFillTags, onPin, onFavorite }: MemoCardProps) => {
   const { isDark } = useTheme();
   const c = colors(isDark);
@@ -580,6 +591,7 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdi
         ))}
       </div>
       <div style={isLong && !expanded ? { ...styles.content, color: c.textSecondary, maxHeight: 160, overflow: 'hidden' } : { ...styles.content, color: c.textSecondary }}>
+        <VoiceNoteBlock voiceNote={memo.voiceNote} isDark={isDark} />
         <ReactMarkdown
           rehypePlugins={[rehypeRaw]}
           components={{
@@ -779,6 +791,22 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#333',
     fontSize: 14,
     wordBreak: 'break-word',
+  },
+  voiceBlock: {
+    marginBottom: 14,
+    padding: '12px 14px',
+    borderRadius: 12,
+  },
+  voiceAudio: {
+    width: '100%',
+    minWidth: 0,
+    display: 'block',
+  },
+  voicePending: {
+    margin: '10px 0 0',
+    fontSize: 13,
+    lineHeight: 1.6,
+    color: '#8a8a8a',
   },
   expandButton: {
     border: 'none',
