@@ -83,4 +83,43 @@ describe('POST /api/memos with voice note', () => {
       }),
     );
   });
+
+  it('persists browser-native transcript fields when provided', async () => {
+    const env = await createTestEnv();
+    const response = await app.request(
+      'http://localhost/api/memos',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: 'meno_session=valid-author-session',
+        },
+        body: JSON.stringify({
+          content: '这是浏览器原生转写',
+          visibility: 'private',
+          displayDate: '2026-04-14',
+          voiceNote: {
+            objectKey: 'voice-notes/native-transcript.m4a',
+            audioUrl: 'https://cdn.example.com/voice-notes/native-transcript.m4a',
+            mimeType: 'audio/mp4',
+            durationMs: 3456,
+            transcriptText: '这是浏览器原生转写',
+            transcriptSource: 'browser-native',
+          },
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(201);
+
+    const payload = (await response.json()) as { memo: MemoDetail };
+    expect(payload.memo.voiceNote).toEqual(
+      expect.objectContaining({
+        transcriptStatus: 'done',
+        transcriptText: '这是浏览器原生转写',
+        transcriptSource: 'browser-native',
+      }),
+    );
+  });
 });

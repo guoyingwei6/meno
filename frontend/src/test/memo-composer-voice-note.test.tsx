@@ -123,6 +123,99 @@ describe('MemoComposer voice note flow', () => {
     expect(trackStop).toHaveBeenCalled();
   });
 
+  it('uses browser-native transcription as content when the textarea is empty', async () => {
+    const onSubmit = vi.fn(async () => undefined);
+    const trackStop = vi.fn();
+    const stream = {
+      getTracks: () => [{ stop: trackStop }],
+    } as unknown as MediaStream;
+    const getUserMedia = vi.fn(async () => stream);
+    const mediaRecorder = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      mimeType: 'audio/webm',
+      state: 'inactive',
+      ondataavailable: null as ((event: BlobEvent) => void) | null,
+      onstop: null as (() => void) | null,
+    };
+    const speechRecognition = {
+      lang: 'zh-CN',
+      continuous: true,
+      interimResults: true,
+      start: vi.fn(),
+      stop: vi.fn(),
+      onresult: null as ((event: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null,
+      onerror: null as ((event: { error: string }) => void) | null,
+      onend: null as (() => void) | null,
+    };
+
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {
+        mediaDevices: {
+          getUserMedia,
+        },
+      },
+      configurable: true,
+    });
+    vi.stubGlobal('MediaRecorder', vi.fn(() => mediaRecorder));
+    Object.defineProperty(window, 'webkitSpeechRecognition', {
+      value: vi.fn(() => speechRecognition),
+      configurable: true,
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      url: 'https://cdn.example.com/uploads/voice.webm',
+      objectKey: 'uploads/voice.webm',
+      fileName: 'voice.webm',
+    }), { headers: { 'Content-Type': 'application/json' } })));
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn(() => 'blob:voice-note'),
+      revokeObjectURL: vi.fn(),
+    });
+
+    render(<MemoComposer defaultDisplayDate="2026-04-13" onSubmit={onSubmit} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '录音' }));
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true }));
+
+    act(() => {
+      speechRecognition.onresult?.({
+        resultIndex: 0,
+        results: [
+          [{ transcript: '这是浏览器原生转写' }],
+        ] as unknown as ArrayLike<ArrayLike<{ transcript: string }>>,
+      });
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: '停止录音' }));
+
+    await act(async () => {
+      mediaRecorder.ondataavailable?.({
+        data: new Blob(['voice'], { type: 'audio/webm' }),
+      } as BlobEvent);
+      mediaRecorder.onstop?.();
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: '保存语音笔记' }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith({
+        content: '这是浏览器原生转写',
+        visibility: 'public',
+        displayDate: '2026-04-13',
+        voiceNote: expect.objectContaining({
+          objectKey: 'uploads/voice.webm',
+          transcriptText: '这是浏览器原生转写',
+          transcriptSource: 'browser-native',
+        }),
+      });
+    });
+
+    expect(speechRecognition.start).toHaveBeenCalled();
+    expect(speechRecognition.stop).toHaveBeenCalled();
+    expect(trackStop).toHaveBeenCalled();
+  });
+
   it('preserves the existing reviewed draft when re-record setup fails', async () => {
     const initialTrackStop = vi.fn();
     const initialStream = {

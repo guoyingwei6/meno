@@ -56,6 +56,8 @@ export interface CreateMemoVoiceNoteInput {
   audioUrl: string;
   mimeType: string;
   durationMs: number;
+  transcriptText?: string;
+  transcriptSource?: string;
 }
 
 export interface CreateMemoInput {

@@ -12,6 +12,8 @@ interface MemoComposerSubmitInput {
     audioUrl: string;
     mimeType: string;
     durationMs: number;
+    transcriptText?: string;
+    transcriptSource?: string;
   };
 }
 
@@ -34,6 +36,33 @@ interface AudioDraft {
 }
 
 type RecordingState = 'idle' | 'recording' | 'review' | 'saving';
+
+interface BrowserSpeechRecognitionResult {
+  isFinal?: boolean;
+  0?: {
+    transcript: string;
+  };
+}
+
+interface BrowserSpeechRecognitionEvent {
+  resultIndex: number;
+  results: ArrayLike<BrowserSpeechRecognitionResult>;
+}
+
+interface BrowserSpeechRecognition {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+interface BrowserSpeechRecognitionConstructor {
+  new (): BrowserSpeechRecognition;
+}
 
 const getApiBase = () => (globalThis as typeof globalThis & { __MENO_API_BASE_URL__?: string }).__MENO_API_BASE_URL__ || '';
 const formatDuration = (durationMs: number) => {
@@ -99,6 +128,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
   const [recordingDurationMs, setRecordingDurationMs] = useState(0);
   const [audioDraft, setAudioDraft] = useState<AudioDraft | null>(null);
+  const [transcriptText, setTranscriptText] = useState('');
   const [tagDropdown, setTagDropdown] = useState<{ suggestions: string[]; top: number; left: number } | null>(null);
   const [tagIndex, setTagIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -110,7 +140,16 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const dismissedTagMatchRef = useRef<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const isRecordingSupported = Boolean(navigator.mediaDevices?.getUserMedia) && typeof MediaRecorder !== 'undefined';
+
+  const getSpeechRecognitionConstructor = () => {
+    const speechWindow = window as Window & {
+      SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+      webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+    };
+    return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
+  };
 
   const revokeAudioDraftUrl = (draft: AudioDraft | null) => {
     if (draft) URL.revokeObjectURL(draft.previewUrl);
@@ -126,6 +165,11 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const stopMediaStream = () => {
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
+  };
+
+  const stopSpeechRecognition = () => {
+    speechRecognitionRef.current?.stop();
+    speechRecognitionRef.current = null;
   };
 
   const updateTagSuggestions = (value: string, cursorPos: number) => {
@@ -221,6 +265,8 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     clearAudioDraft();
     mediaRecorderRef.current = null;
     stopMediaStream();
+    stopSpeechRecognition();
+    setTranscriptText('');
     setRecordingStartedAt(null);
     setRecordingDurationMs(0);
     setRecordingState('idle');
@@ -229,6 +275,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const cancelRecording = () => {
     mediaRecorderRef.current = null;
     stopMediaStream();
+    stopSpeechRecognition();
     setRecordingStartedAt(null);
     setRecordingDurationMs(0);
     setRecordingState(audioDraft ? 'review' : 'idle');
@@ -242,13 +289,38 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
+      const SpeechRecognitionCtor = getSpeechRecognitionConstructor();
+      const recognition = SpeechRecognitionCtor ? new SpeechRecognitionCtor() : null;
       const startedAt = Date.now();
       const chunks: Blob[] = [];
+
+      if (recognition) {
+        recognition.lang = 'zh-CN';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.onresult = (event) => {
+          const nextTranscript = Array.from(event.results)
+            .slice(event.resultIndex)
+            .map((result) => result[0]?.transcript?.trim() ?? '')
+            .filter(Boolean)
+            .join('');
+          if (nextTranscript) {
+            setTranscriptText(nextTranscript);
+          }
+        };
+        recognition.onerror = () => {
+          speechRecognitionRef.current = null;
+        };
+        recognition.onend = () => {
+          speechRecognitionRef.current = null;
+        };
+      }
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunks.push(event.data);
       };
       recorder.onstop = () => {
+        stopSpeechRecognition();
         const mimeType = recorder.mimeType || 'audio/webm';
         const blob = new Blob(chunks, { type: mimeType });
         setAudioDraft({
@@ -267,11 +339,15 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
       recorder.start();
       mediaStreamRef.current = stream;
       mediaRecorderRef.current = recorder;
+      speechRecognitionRef.current = recognition;
       clearAudioDraft();
+      setTranscriptText('');
       setRecordingStartedAt(startedAt);
       setRecordingDurationMs(0);
       setRecordingState('recording');
+      recognition?.start();
     } catch {
+      stopSpeechRecognition();
       stream?.getTracks().forEach((track) => track.stop());
     }
   };
@@ -330,8 +406,9 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
 
   const handleSubmit = async () => {
     const textPart = content.trim();
+    const transcriptPart = transcriptText.trim();
     const imagePart = images.map((img) => `![](${img.url})`).join('\n');
-    const fullContent = [textPart, imagePart].filter(Boolean).join('\n');
+    const fullContent = [textPart || transcriptPart, imagePart].filter(Boolean).join('\n');
     if ((!fullContent && !audioDraft) || submitting || recordingState === 'recording') return;
     const currentAudioDraft = audioDraft;
     let submitted = false;
@@ -349,6 +426,12 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
           audioUrl: upload.url,
           mimeType: currentAudioDraft.mimeType,
           durationMs: currentAudioDraft.durationMs,
+          ...(transcriptPart
+            ? {
+              transcriptText: transcriptPart,
+              transcriptSource: 'browser-native',
+            }
+            : {}),
         };
       }
 
@@ -360,6 +443,8 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
       clearAudioDraft();
       mediaRecorderRef.current = null;
       stopMediaStream();
+      stopSpeechRecognition();
+      setTranscriptText('');
       setRecordingStartedAt(null);
       setRecordingDurationMs(0);
       setRecordingState('idle');
@@ -417,6 +502,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     revokeAudioDraftUrl(audioDraft);
     mediaRecorderRef.current = null;
     stopMediaStream();
+    stopSpeechRecognition();
   }, [audioDraft]);
 
   return (
@@ -486,6 +572,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
           {audioDraft ? (
             <>
               <audio controls src={audioDraft.previewUrl} style={styles.voicePlayer} />
+              {transcriptText ? <div style={styles.transcriptPreview}>{transcriptText}</div> : null}
               <div style={styles.voiceActions}>
                 <button type="button" style={styles.voiceGhostButton} onClick={resetVoiceDraft}>
                   取消
@@ -747,6 +834,12 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap',
     gap: 8,
     width: '100%',
+  },
+  transcriptPreview: {
+    width: '100%',
+    fontSize: 14,
+    lineHeight: 1.6,
+    color: '#666',
   },
   voiceActionButton: {
     border: '1px solid #e0e0e0',

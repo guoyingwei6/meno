@@ -31,6 +31,8 @@ memoRoutes.post('/memos', async (c) => {
       audioUrl: string;
       mimeType: string;
       durationMs: number;
+      transcriptText?: string;
+      transcriptSource?: string;
     };
   }>();
 
@@ -50,7 +52,9 @@ memoRoutes.post('/memos', async (c) => {
         audioUrl: body.voiceNote.audioUrl,
         mimeType: body.voiceNote.mimeType,
         durationMs: body.voiceNote.durationMs,
-        transcriptStatus: 'pending',
+        transcriptStatus: body.voiceNote.transcriptText ? 'done' : 'pending',
+        transcriptText: body.voiceNote.transcriptText ?? null,
+        transcriptSource: body.voiceNote.transcriptSource ?? null,
       });
     } catch (error) {
       try {
