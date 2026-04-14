@@ -166,6 +166,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const discardRecordingRef = useRef(false);
   const isRecordingSupported = Boolean(navigator.mediaDevices?.getUserMedia) && typeof MediaRecorder !== 'undefined';
 
   const getSpeechRecognitionConstructor = () => {
@@ -287,6 +288,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   };
 
   const resetVoiceDraft = () => {
+    discardRecordingRef.current = false;
     clearAudioDraft();
     mediaRecorderRef.current = null;
     stopMediaStream();
@@ -298,6 +300,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   };
 
   const cancelRecording = () => {
+    discardRecordingRef.current = true;
     mediaRecorderRef.current = null;
     stopMediaStream();
     stopSpeechRecognition();
@@ -347,6 +350,15 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
       };
       recorder.onstop = () => {
         stopSpeechRecognition();
+        if (discardRecordingRef.current) {
+          discardRecordingRef.current = false;
+          mediaRecorderRef.current = null;
+          stopMediaStream();
+          setRecordingStartedAt(null);
+          setRecordingDurationMs(0);
+          setRecordingState('idle');
+          return;
+        }
         const mimeType = recorder.mimeType || 'audio/webm';
         const blob = new Blob(chunks, { type: mimeType });
         setAudioDraft({
@@ -366,6 +378,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
       mediaStreamRef.current = stream;
       mediaRecorderRef.current = recorder;
       speechRecognitionRef.current = recognition;
+      discardRecordingRef.current = false;
       clearAudioDraft();
       setTranscriptText('');
       setRecordingStartedAt(startedAt);

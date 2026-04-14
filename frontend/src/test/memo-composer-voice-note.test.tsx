@@ -446,6 +446,57 @@ describe('MemoComposer voice note flow', () => {
 
   });
 
+  it('discards the recording when cancel is clicked even if recorder stops afterwards', async () => {
+    const stop = vi.fn();
+    const stream = {
+      getTracks: () => [{ stop }],
+    } as unknown as MediaStream;
+    const getUserMedia = vi.fn(async () => stream);
+    const mediaRecorder = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      mimeType: 'audio/webm',
+      state: 'recording',
+      ondataavailable: null as ((event: BlobEvent) => void) | null,
+      onstop: null as (() => void) | null,
+    };
+
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {
+        mediaDevices: {
+          getUserMedia,
+        },
+      },
+      configurable: true,
+    });
+    vi.stubGlobal('MediaRecorder', vi.fn(() => mediaRecorder));
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn(() => 'blob:voice-note'),
+      revokeObjectURL: vi.fn(),
+    });
+
+    render(<MemoComposer defaultDisplayDate="2026-04-13" onSubmit={vi.fn(async () => undefined)} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '录音' }));
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '取消录音' }));
+
+    await act(async () => {
+      mediaRecorder.ondataavailable?.({
+        data: new Blob(['voice'], { type: 'audio/webm' }),
+      } as BlobEvent);
+      mediaRecorder.onstop?.();
+    });
+
+    expect(stop).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: '保存语音笔记' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '停止录音' })).not.toBeInTheDocument();
+  });
+
   it('disables the voice button with a clear hint when recording is unsupported', () => {
     Object.defineProperty(globalThis, 'navigator', {
       value: {},
