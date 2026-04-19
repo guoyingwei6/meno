@@ -5,6 +5,10 @@ Always respond in Chinese-simplified
 - superpowers:brainstorming
 - superpowers:test-driven-development
 
+# 前端交互约定
+
+- 发布 Memo 的输入框需要随内容自动增高；短内容不出现内部滚动，超过 `min(60vh, 420px)` 后才在输入框内滚动，避免长文输入挤掉整页布局。
+
 # 部署
 
 ## 前端（Cloudflare Pages）
