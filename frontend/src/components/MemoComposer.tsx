@@ -189,6 +189,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const discardRecordingRef = useRef(false);
   const isRecordingSupported = Boolean(navigator.mediaDevices?.getUserMedia) && typeof MediaRecorder !== 'undefined';
+  const hasDraft = recordingState !== 'recording' && (content.length > 0 || images.length > 0 || Boolean(audioDraft) || transcriptText.length > 0);
 
   const getSpeechRecognitionConstructor = () => {
     const speechWindow = window as Window & {
@@ -324,6 +325,16 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     setRecordingStartedAt(null);
     setRecordingDurationMs(0);
     setRecordingState('idle');
+  };
+
+  const cancelDraft = () => {
+    setContent('');
+    setVisibility('public');
+    setDisplayDate(defaultDisplayDate);
+    setImages([]);
+    setTagDropdown(null);
+    dismissedTagMatchRef.current = null;
+    resetVoiceDraft();
   };
 
   const cancelRecording = () => {
@@ -734,6 +745,11 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
           </label>
           <input aria-label="归属日期" type="date" value={displayDate} onChange={(event) => setDisplayDate(event.target.value)} style={{ ...styles.dateInput, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }} />
         </div>
+        {hasDraft ? (
+          <button type="button" style={{ ...styles.cancelButton, color: c.textMuted }} onClick={cancelDraft}>
+            取消
+          </button>
+        ) : null}
         <button type="button" style={{ ...styles.submitButton, ...(submitting ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }} onClick={handleSubmit} disabled={submitting} title={submitting ? '发布中...' : '发布'}>
           {submitting ? <span style={{ fontSize: 12, color: '#fff' }}>...</span> : <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>}
         </button>
@@ -965,6 +981,16 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#555',
     height: 32,
     boxSizing: 'border-box',
+  },
+  cancelButton: {
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    borderRadius: 6,
+    padding: '0 8px',
+    height: 36,
+    fontSize: 14,
+    flexShrink: 0,
   },
   submitButton: {
     border: 'none',

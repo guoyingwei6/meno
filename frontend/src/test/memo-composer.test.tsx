@@ -107,6 +107,32 @@ describe('MemoComposer', () => {
     expect(textarea.style.overflowY).toBe('hidden');
   });
 
+  it('shows a cancel action for drafts and clears the composer back to defaults', async () => {
+    const onSubmit = vi.fn(async () => undefined);
+
+    render(<MemoComposer defaultDisplayDate="2026-03-25" onSubmit={onSubmit} />);
+
+    expect(screen.queryByRole('button', { name: '取消' })).not.toBeInTheDocument();
+
+    const textarea = screen.getByPlaceholderText('现在的想法是...');
+    fireEvent.change(textarea, {
+      target: { value: '不想写了的草稿' },
+    });
+    fireEvent.change(screen.getByLabelText('可见性'), {
+      target: { value: 'private' },
+    });
+    fireEvent.change(screen.getByLabelText('归属日期'), {
+      target: { value: '2026-03-16' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+
+    expect(textarea).toHaveValue('');
+    expect(screen.getByLabelText('可见性')).toHaveValue('public');
+    expect(screen.getByLabelText('归属日期')).toHaveValue('2026-03-25');
+    expect(screen.queryByRole('button', { name: '取消' })).not.toBeInTheDocument();
+  });
+
   it('dismisses tag suggestions on Escape until the tag text changes', async () => {
     const onSubmit = vi.fn(async () => undefined);
 
