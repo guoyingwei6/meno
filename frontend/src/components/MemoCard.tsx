@@ -35,6 +35,11 @@ const countWords = (text: string) => {
   return cleaned.length;
 };
 
+const contentFontSize = 14;
+const contentLineHeight = 1.7;
+const collapsedContentLines = 6;
+const collapsedContentMaxHeight = contentFontSize * contentLineHeight * collapsedContentLines + 8;
+
 const areSuggestionsEqual = (prev: string[] | undefined, next: string[]) => {
   if (!prev) return false;
   return prev.length === next.length && prev.every((tag, index) => tag === next[index]);
@@ -590,7 +595,7 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdi
           </button>
         ))}
       </div>
-      <div style={isLong && !expanded ? { ...styles.content, color: c.textSecondary, maxHeight: 160, overflow: 'hidden' } : { ...styles.content, color: c.textSecondary }}>
+      <div style={isLong && !expanded ? { ...styles.content, color: c.textSecondary, maxHeight: collapsedContentMaxHeight, overflow: 'hidden' } : { ...styles.content, color: c.textSecondary }}>
         <VoiceNoteBlock voiceNote={memo.voiceNote} isDark={isDark} />
         <ReactMarkdown
           rehypePlugins={[rehypeRaw]}
@@ -789,7 +794,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   content: {
     color: '#333',
-    fontSize: 14,
+    fontSize: contentFontSize,
     wordBreak: 'break-word',
   },
   voiceBlock: {
