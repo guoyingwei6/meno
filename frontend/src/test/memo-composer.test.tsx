@@ -89,6 +89,24 @@ describe('MemoComposer', () => {
     });
   });
 
+  it('expands the editor to fit multiline content before it needs internal scrolling', async () => {
+    const onSubmit = vi.fn(async () => undefined);
+
+    render(<MemoComposer defaultDisplayDate="2026-03-25" onSubmit={onSubmit} />);
+
+    const textarea = screen.getByPlaceholderText('现在的想法是...') as HTMLTextAreaElement;
+    Object.defineProperty(textarea, 'scrollHeight', { configurable: true, value: 188 });
+
+    fireEvent.change(textarea, {
+      target: { value: '顶尖。\n干自己擅长的事，哪怕没那么喜欢。\n获得一个专长。\n借假修真。' },
+    });
+
+    await waitFor(() => {
+      expect(textarea.style.height).toBe('188px');
+    });
+    expect(textarea.style.overflowY).toBe('hidden');
+  });
+
   it('dismisses tag suggestions on Escape until the tag text changes', async () => {
     const onSubmit = vi.fn(async () => undefined);
 

@@ -97,6 +97,27 @@ const getAudioFileExtension = (mimeType: string) => {
   return 'webm';
 };
 
+const COMPOSER_TEXTAREA_MIN_HEIGHT = 100;
+const COMPOSER_TEXTAREA_MAX_HEIGHT = 420;
+const COMPOSER_TEXTAREA_MAX_VIEWPORT_RATIO = 0.6;
+
+const getComposerTextareaMaxHeight = () => {
+  const viewportCap = Math.floor(window.innerHeight * COMPOSER_TEXTAREA_MAX_VIEWPORT_RATIO);
+  return Math.max(COMPOSER_TEXTAREA_MIN_HEIGHT, Math.min(COMPOSER_TEXTAREA_MAX_HEIGHT, viewportCap));
+};
+
+const resizeComposerTextarea = (textarea: HTMLTextAreaElement) => {
+  textarea.style.height = 'auto';
+  textarea.style.overflowY = 'hidden';
+
+  const contentHeight = Math.max(textarea.scrollHeight, COMPOSER_TEXTAREA_MIN_HEIGHT);
+  const maxHeight = getComposerTextareaMaxHeight();
+  const nextHeight = Math.min(contentHeight, maxHeight);
+
+  textarea.style.height = `${nextHeight}px`;
+  textarea.style.overflowY = contentHeight > maxHeight ? 'auto' : 'hidden';
+};
+
 /** Renders text with #tags in green and code blocks with background — sits behind transparent textarea */
 const HighlightOverlay = ({ text, textColor, isDark }: { text: string; textColor: string; isDark: boolean }) => {
   const parts = text.split(/(```[\s\S]*?```|`[^`\n]+`|#[^\s#]+)/g);
@@ -196,6 +217,12 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const stopSpeechRecognition = () => {
     speechRecognitionRef.current?.stop();
     speechRecognitionRef.current = null;
+  };
+
+  const resizeTextarea = () => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    resizeComposerTextarea(ta);
   };
 
   const updateTagSuggestions = (value: string, cursorPos: number) => {
@@ -530,6 +557,10 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   }, [tagDropdown]);
 
   useEffect(() => {
+    resizeTextarea();
+  }, [content]);
+
+  useEffect(() => {
     if (recordingState !== 'recording' || recordingStartedAt === null) return;
     const tick = () => setRecordingDurationMs(Date.now() - recordingStartedAt);
     tick();
@@ -761,10 +792,12 @@ const styles: Record<string, React.CSSProperties> = {
     ...sharedFont,
     width: '100%',
     minHeight: 100,
+    maxHeight: 'min(60vh, 420px)',
     padding: '16px 20px 8px',
     border: 'none',
     outline: 'none',
     resize: 'none',
+    overflowY: 'hidden',
     boxSizing: 'border-box',
     background: 'transparent',
     color: 'transparent',
