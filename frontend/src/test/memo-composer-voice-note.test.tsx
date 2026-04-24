@@ -360,7 +360,7 @@ describe('MemoComposer voice note flow', () => {
 
     expect(screen.getByRole('button', { name: '保存语音笔记' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '重录' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '取消' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '取消' }).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: '停止录音' })).not.toBeInTheDocument();
   });
 

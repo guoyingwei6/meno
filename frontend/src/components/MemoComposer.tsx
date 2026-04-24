@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getCaretCoords, getRecentTags, recordRecentTag } from '../lib/caret';
+import { SortableImagePreviewList } from './SortableImagePreviewList';
 import { useTheme, colors } from '../lib/theme';
 
 interface MemoComposerSubmitInput {
@@ -621,21 +622,13 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
         />
       </div>
       {images.length > 0 ? (
-        <div style={styles.imagePreviewGrid}>
-          {images.map((img, i) => (
-            <div key={img.url} style={styles.imagePreviewWrap}>
-              <img src={img.url} alt={img.name} style={styles.imagePreviewThumb} />
-              <button
-                type="button"
-                aria-label={`删除 ${img.name}`}
-                style={styles.imageRemoveButton}
-                onClick={() => setImages((prev) => prev.filter((_, idx) => idx !== i))}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
+        <SortableImagePreviewList
+          items={images.map((img) => ({ id: img.url, url: img.url, name: img.name }))}
+          onReorder={(nextItems) => {
+            setImages(nextItems.map((item) => ({ url: item.url, name: item.name })));
+          }}
+          onRemove={(index) => setImages((prev) => prev.filter((_, idx) => idx !== index))}
+        />
       ) : null}
       {recordingState !== 'idle' || audioDraft ? (
         <div style={{ ...styles.voicePanel, background: c.inputBg }}>
@@ -819,42 +812,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'transparent',
     position: 'relative',
     zIndex: 1,
-  },
-  imagePreviewGrid: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 8,
-    padding: '4px 20px 8px',
-  },
-  imagePreviewWrap: {
-    position: 'relative',
-    width: 80,
-    height: 80,
-  },
-  imagePreviewThumb: {
-    width: 80,
-    height: 80,
-    objectFit: 'cover',
-    borderRadius: 8,
-    background: '#f5f5f5',
-  },
-  imageRemoveButton: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    width: 20,
-    height: 20,
-    borderRadius: '50%',
-    background: 'rgba(0,0,0,0.5)',
-    color: '#fff',
-    border: 'none',
-    cursor: 'pointer',
-    fontSize: 11,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    lineHeight: 1,
-    padding: 0,
   },
   toolbar: {
     display: 'flex',

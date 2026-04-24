@@ -1,8 +1,17 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SidebarShell } from '../components/SidebarShell';
 
 describe('SidebarShell calendar with heatmap', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-16T08:00:00Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('highlights the selected day and fires onSelectDate', () => {
     const onSelectDate = vi.fn();
 

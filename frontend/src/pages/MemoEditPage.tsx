@@ -5,9 +5,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { fetchAuthorMemo, fetchDashboardTags, fetchMe, updateMemo } from '../lib/api';
 import { getCaretCoords, getRecentTags, recordRecentTag } from '../lib/caret';
 import { extractMarkdownImageUrls, stripMarkdownImageSyntax } from '../lib/content';
+import { SortableImagePreviewList } from '../components/SortableImagePreviewList';
 import { useTheme, colors } from '../lib/theme';
 
 const getApiBase = () => (globalThis as typeof globalThis & { __MENO_API_BASE_URL__?: string }).__MENO_API_BASE_URL__ || '';
+const getImageNameFromUrl = (url: string) => decodeURIComponent(url.split('/').pop()?.split('?')[0] || '图片');
 
 /** Tag highlight overlay — sits behind the transparent textarea */
 const HighlightOverlay = ({ text, textColor, isDark }: { text: string; textColor: string; isDark: boolean }) => {
@@ -319,17 +321,16 @@ export const MemoEditPage = () => {
 
         {/* Image thumbnails */}
         {editImages.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '4px 20px 8px' }}>
-            {editImages.map((url, i) => (
-              <div key={url} style={{ position: 'relative' }}>
-                <img src={url} alt="" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, cursor: 'zoom-in', background: '#f5f5f5', display: 'block' }}
-                  onClick={() => setLightboxIndex(i)} />
-                <button type="button" title="删除图片"
-                  style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
-                  onClick={() => setImageUrls((prev) => (prev ?? []).filter((_, idx) => idx !== i))}>✕</button>
-              </div>
-            ))}
-          </div>
+          <SortableImagePreviewList
+            items={editImages.map((url) => ({ id: url, url, name: getImageNameFromUrl(url), alt: getImageNameFromUrl(url) }))}
+            onReorder={(nextItems) => {
+              setImageUrls(nextItems.map((item) => item.url));
+            }}
+            onRemove={(index) => setImageUrls((prev) => (prev ?? []).filter((_, idx) => idx !== index))}
+            onPreview={(index) => setLightboxIndex(index)}
+            thumbStyle={{ cursor: 'zoom-in' }}
+            removeButtonStyle={{ background: 'rgba(0,0,0,0.55)' }}
+          />
         )}
 
         {/* Toolbar */}

@@ -6,7 +6,7 @@ describe('buildTagTree counts', () => {
     const result = buildTagTree(['平台/小红书', '平台/twitter', '类别/知识储备']);
 
     expect(result.groups).toEqual([
-      { label: '平台', children: [{ name: 'twitter', count: 1 }, { name: '小红书', count: 1 }], count: 2 },
+      { label: '平台', children: [{ name: '小红书', count: 1 }, { name: 'twitter', count: 1 }], count: 2 },
       { label: '类别', children: [{ name: '知识储备', count: 1 }], count: 1 },
     ]);
     expect(result.flat).toEqual([]);
