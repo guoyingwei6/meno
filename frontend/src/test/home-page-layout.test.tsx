@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomePage } from '../pages/HomePage';
@@ -114,5 +114,30 @@ describe('HomePage layout', () => {
     expect(screen.getByText('记录统计')).toBeInTheDocument();
     expect(screen.getByText('全部标签')).toBeInTheDocument();
     expect(screen.getByText('登录后发布 memo')).toBeInTheDocument();
+  });
+
+  it('shows GitHub login in the opened sidebar on mobile', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      value: 500,
+      configurable: true,
+      writable: true,
+    });
+
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <HomePage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText('登录后发布 memo');
+    expect(screen.queryByRole('button', { name: 'GitHub 登录' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '切换侧边栏' }));
+
+    expect(await screen.findByRole('button', { name: 'GitHub 登录' })).toBeInTheDocument();
   });
 });

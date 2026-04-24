@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { loginUrl } from '../lib/runtime-config';
 import { useTheme, colors, type ThemeMode } from '../lib/theme';
 
 interface TopBarProps {
@@ -96,9 +95,6 @@ export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, 
             </button>
           )}
         </div>
-        {!authenticated && (
-          <button type="button" style={styles.authButtonPrimary} onClick={() => window.location.assign(loginUrl())}>GitHub 登录</button>
-        )}
       </div>
     </header>
   );
@@ -113,6 +109,5 @@ const styles: Record<string, React.CSSProperties> = {
   searchInput: { border: 'none', outline: 'none', background: 'transparent', fontSize: 13, width: '100%', lineHeight: 1.4 },
   searchClear: { border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' },
   identity: { fontWeight: 600, fontSize: 14 },
-  authButtonPrimary: { border: 'none', borderRadius: 8, padding: '8px 14px', background: '#111', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13 },
   authButtonSecondary: { border: '1px solid #e0e0e0', borderRadius: 8, padding: '6px 12px', background: '#fff', cursor: 'pointer', fontSize: 13 },
 };

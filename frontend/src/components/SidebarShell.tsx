@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { loginUrl } from '../lib/runtime-config';
 import type { TagTreeResult } from '../lib/tag-tree';
 import { useTheme, colors } from '../lib/theme';
 
@@ -234,6 +235,15 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
               <button type="button" style={{ ...styles.logoutButton, borderColor: c.borderMedium, color: c.textMuted, background: c.cardBg }} onClick={onLogout}>退出</button>
             </div>
           )}
+          {!authenticated && (
+            <button
+              type="button"
+              style={{ ...styles.loginButton, background: '#111', color: '#fff' }}
+              onClick={() => window.location.assign(loginUrl())}
+            >
+              GitHub 登录
+            </button>
+          )}
         </div>
         <div style={styles.statsGrid}>
           <button type="button" style={styles.statButton} onClick={() => onSelectView?.('stats')}><div style={styles.statNumber}>{memoCount}</div><div style={styles.statLabel}>笔记</div></button>
@@ -463,6 +473,15 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '2px 8px',
     fontSize: 12,
     cursor: 'pointer',
+  },
+  loginButton: {
+    border: 'none',
+    borderRadius: 8,
+    padding: '8px 12px',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    flexShrink: 0,
   },
   brand: {
     fontSize: 28,

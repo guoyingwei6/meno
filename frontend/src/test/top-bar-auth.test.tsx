@@ -16,22 +16,17 @@ beforeEach(() => {
 });
 
 describe('TopBar auth actions', () => {
-  it('shows GitHub login button for viewer and opens OAuth login route', () => {
+  it('does not show GitHub login button for viewer', () => {
     render(<TopBar authenticated={false} githubLogin={null} onLogout={vi.fn()} />);
 
-    const button = screen.getByRole('button', { name: 'GitHub 登录' });
-    fireEvent.click(button);
-
-    expect(assignMock).toHaveBeenCalledWith('https://api.meno.guoyingwei.top/api/auth/github/login');
+    expect(screen.queryByRole('button', { name: 'GitHub 登录' })).toBeNull();
   });
 
-  it('shows author identity and logout button for signed-in author', () => {
-    const onLogout = vi.fn();
-    render(<TopBar authenticated={true} githubLogin="guoyingwei" onLogout={onLogout} />);
+  it('shows authenticated-only actions and hides the login button for signed-in author', () => {
+    render(<TopBar authenticated={true} githubLogin="guoyingwei" onLogout={vi.fn()} />);
 
-    expect(screen.getByText('@guoyingwei')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: '退出' }));
-    expect(onLogout).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'GitHub 登录' })).toBeNull();
+    expect(screen.getByRole('button', { name: '导入/导出' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'AI 配置' })).toBeInTheDocument();
   });
 });
