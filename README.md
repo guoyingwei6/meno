@@ -50,6 +50,7 @@
 ### API
 - Quick API：通过 `X-API-Key` 认证，支持 POST 创建笔记和上传图片
 - 适配苹果快捷指令、自动化工具等场景
+- MCP Server：实现 MCP (Model Context Protocol) Streamable HTTP 端点，让 AI 助手可以对笔记进行增删改查
 
 ## 技术栈
 
@@ -152,6 +153,34 @@ curl -X POST https://your-api.workers.dev/api/quick/memos \
 curl -X POST https://your-api.workers.dev/api/quick/upload \
   -H "X-API-Key: your-token" \
   -F "file=@photo.jpg"
+```
+
+## MCP Server
+
+Meno 内置了 [MCP (Model Context Protocol)](https://modelcontextprotocol.io) 端点，支持 Streamable HTTP 传输协议。AI 助手（如 Claude、Hermes 等）可以通过 MCP 对笔记进行增删改查。
+
+### 可用工具
+
+| 工具 | 说明 |
+|------|------|
+| `list_memos` | 列出笔记，支持按标签、日期、关键词筛选 |
+| `get_memo` | 按 slug 查看单条笔记 |
+| `create_memo` | 创建笔记，内容中的 `#标签` 自动解析 |
+| `update_memo` | 编辑笔记内容、可见性或日期 |
+| `delete_memo` | 将笔记移入回收站 |
+
+### 连接配置
+
+- **URL**: `https://your-api.workers.dev/api/mcp`
+- **认证**: `Authorization: Bearer <API_TOKEN>`
+
+### 测试
+
+```bash
+curl -X POST https://your-api.workers.dev/api/mcp \
+  -H "Authorization: Bearer your-token" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
 ## 开源协议

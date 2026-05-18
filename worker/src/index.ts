@@ -6,6 +6,7 @@ import { dashboardRoutes } from './routes/dashboard';
 import { memoRoutes } from './routes/memos';
 import { publicRoutes } from './routes/public';
 import { quickApiRoutes } from './routes/quick-api';
+import { mcpRoutes } from './routes/mcp';
 import { uploadRoutes } from './routes/upload';
 import { getAssetResponse } from './storage/r2';
 
@@ -25,6 +26,7 @@ app.route('/api/ai', aiRoutes);
 app.route('/api', uploadRoutes);
 app.route('/api/dashboard', dashboardRoutes);
 app.route('/api/quick', quickApiRoutes);
+app.route('/api/mcp', mcpRoutes);
 
 // Fallback: serve old image URLs at /assets/* (before prefix was changed to /api/assets/*)
 app.get('/assets/:key{.+}', async (c) => {
