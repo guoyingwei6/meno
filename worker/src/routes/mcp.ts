@@ -47,29 +47,34 @@ const TOOLS = [
   },
   {
     name: 'create_memo',
-    description: 'Create a new memo. Use #tag in content to add tags.',
+    description: 'Create a new memo. Use #tag in content to add tags. Pass image URLs in images array to attach photos.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        content: { type: 'string', description: 'Memo content (markdown). Use #tag for tags.' },
+        content: { type: 'string', description: 'Memo content (markdown). Tags must use # prefix in text, e.g. "想法 #读书 #技术"' },
         visibility: {
           type: 'string',
           enum: ['public', 'private'],
           description: 'Visibility (default: public)',
         },
         displayDate: { type: 'string', description: 'Display date (YYYY-MM-DD, default: today)' },
+        images: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of image URLs to attach. Images are mirrored to storage and appended as markdown.',
+        },
       },
       required: ['content'],
     },
   },
   {
     name: 'update_memo',
-    description: 'Update an existing memo by ID.',
+    description: 'Update an existing memo by ID. To add/change tags, include #tag in the content text (e.g. "my note #reading #tech"). Tags are parsed from # prefixed words in the content. When updating content, provide the FULL content (not just the tags to add).',
     inputSchema: {
       type: 'object' as const,
       properties: {
         id: { type: 'number', description: 'Memo ID' },
-        content: { type: 'string', description: 'New content' },
+        content: { type: 'string', description: 'Full new content (replaces old content entirely). Use #tag for tags, e.g. "想法 #读书 #技术"' },
         visibility: { type: 'string', enum: ['public', 'private'], description: 'New visibility' },
         displayDate: { type: 'string', description: 'New display date (YYYY-MM-DD)' },
       },
@@ -89,15 +94,38 @@ const TOOLS = [
   },
 ];
 
+// --- Image mirroring (download external URLs → R2) ---
+
+async function mirrorImages(env: WorkerBindings, urls: string[]): Promise<string[]> {
+  const results = await Promise.all(
+    urls.map(async (url) => {
+      try {
+        const res = await fetch(url, { headers: { Referer: url } });
+        if (!res.ok) return null;
+        const contentType = res.headers.get('content-type') || 'image/jpeg';
+        const ext = contentType.split('/')[1]?.split(';')[0] || 'jpg';
+        const key = `uploads/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        await env.ASSETS.put(key, res.body!, { httpMetadata: { contentType } });
+        const baseUrl = env.ASSET_PUBLIC_BASE_URL || `${env.API_ORIGIN}/api/assets`;
+        return `${baseUrl}/${key}`;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return results.filter((u): u is string => u !== null);
+}
+
 // --- Tool handlers ---
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
 const toolHandlers: Record<
   string,
-  (db: D1Database, args: Record<string, unknown>) => Promise<ToolResult>
+  (env: WorkerBindings, args: Record<string, unknown>) => Promise<ToolResult>
 > = {
-  async list_memos(db, args) {
+  async list_memos(env, args) {
+    const db = env.DB;
     const query = args.query as string | undefined;
     let memos;
     if (query) {
@@ -127,7 +155,8 @@ const toolHandlers: Record<
     return { content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }] };
   },
 
-  async get_memo(db, args) {
+  async get_memo(env, args) {
+    const db = env.DB;
     const slug = args.slug as string;
     const memo = await getAuthorMemoBySlug(db, slug);
     if (!memo) {
@@ -136,16 +165,27 @@ const toolHandlers: Record<
     return { content: [{ type: 'text', text: JSON.stringify(memo, null, 2) }] };
   },
 
-  async create_memo(db, args) {
+  async create_memo(env, args) {
+    const db = env.DB;
     const today = new Date().toISOString().slice(0, 10);
     const displayDate =
       args.displayDate && /^\d{4}-\d{2}-\d{2}$/.test(args.displayDate as string)
         ? (args.displayDate as string)
         : today;
 
+    let content = args.content as string;
+    const imageUrls = args.images as string[] | undefined;
+    if (imageUrls && imageUrls.length > 0) {
+      const mirrored = await mirrorImages(env, imageUrls);
+      if (mirrored.length > 0) {
+        const imgMarkdown = mirrored.map((url) => `![](${url})`).join('\n');
+        content = content ? `${content}\n${imgMarkdown}` : imgMarkdown;
+      }
+    }
+
     const memo = await createMemo(db, {
       slug: createMemoSlug(),
-      content: args.content as string,
+      content,
       visibility: (args.visibility as 'public' | 'private') || 'public',
       displayDate,
     });
@@ -153,7 +193,8 @@ const toolHandlers: Record<
     return { content: [{ type: 'text', text: JSON.stringify(memo, null, 2) }] };
   },
 
-  async update_memo(db, args) {
+  async update_memo(env, args) {
+    const db = env.DB;
     const id = args.id as number;
     const input: { content?: string; visibility?: 'public' | 'private'; displayDate?: string } = {};
     if (args.content !== undefined) input.content = args.content as string;
@@ -170,7 +211,8 @@ const toolHandlers: Record<
     return { content: [{ type: 'text', text: JSON.stringify(memo, null, 2) }] };
   },
 
-  async delete_memo(db, args) {
+  async delete_memo(env, args) {
+    const db = env.DB;
     const id = args.id as number;
     const deleted = await trashMemo(db, id);
     if (!deleted) {
@@ -215,7 +257,7 @@ const SERVER_INFO = {
   version: '1.0.0',
 };
 
-const handleMcpRequest = async (db: D1Database, req: JsonRpcRequest) => {
+const handleMcpRequest = async (env: WorkerBindings, req: JsonRpcRequest) => {
   const isNotification = req.id === undefined;
 
   switch (req.method) {
@@ -241,7 +283,7 @@ const handleMcpRequest = async (db: D1Database, req: JsonRpcRequest) => {
         return jsonRpcError(req.id, -32602, `Unknown tool: ${toolName}`);
       }
       try {
-        const result = await handler(db, toolArgs);
+        const result = await handler(env, toolArgs);
         return jsonRpcSuccess(req.id, result);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Internal error';
@@ -285,11 +327,11 @@ mcpRoutes.post('/', async (c) => {
   if (body.method === 'initialize') {
     const sessionId = generateSessionId();
     activeSessions.add(sessionId);
-    const result = await handleMcpRequest(c.env.DB, body);
+    const result = await handleMcpRequest(c.env, body);
     return c.json(result, 200, { 'Mcp-Session-Id': sessionId });
   }
 
-  const result = await handleMcpRequest(c.env.DB, body);
+  const result = await handleMcpRequest(c.env, body);
 
   // Notifications get 202 Accepted with no body
   if (result === null) {
