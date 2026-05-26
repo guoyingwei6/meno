@@ -27,7 +27,7 @@ describe('MemoComposer upload preview', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByAltText('hello.png')).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'hello.png' })).toBeInTheDocument();
     });
 
     // 有删除按钮
@@ -43,7 +43,7 @@ describe('MemoComposer upload preview', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByAltText('hello.png')).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'hello.png' })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByLabelText('删除 hello.png'));

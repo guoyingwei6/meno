@@ -40,7 +40,7 @@ describe('MemoComposer real upload flow', () => {
     // 图片不在 textarea 中，而是以缩略图显示
     expect(screen.getByPlaceholderText('现在的想法是...')).toHaveValue('');
     await waitFor(() => {
-      expect(screen.getByAltText('hello.png')).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'hello.png' })).toBeInTheDocument();
     });
   });
 });

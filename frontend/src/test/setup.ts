@@ -1,6 +1,19 @@
 import '@testing-library/jest-dom/vitest';
 import { vi } from 'vitest';
 
+// Polyfill PointerEvent for JSDOM (not natively supported)
+if (typeof globalThis.PointerEvent === 'undefined') {
+  (globalThis as Record<string, unknown>).PointerEvent = class PointerEvent extends MouseEvent {
+    readonly pointerId: number;
+    readonly pointerType: string;
+    constructor(type: string, init: PointerEventInit & { pointerId?: number; pointerType?: string } = {}) {
+      super(type, init);
+      this.pointerId = init.pointerId ?? 0;
+      this.pointerType = init.pointerType ?? '';
+    }
+  };
+}
+
 // Mock localStorage
 const localStorageMock = (() => {
   let store: Record<string, string> = {};

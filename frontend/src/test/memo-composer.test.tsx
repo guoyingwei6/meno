@@ -69,7 +69,7 @@ describe('MemoComposer', () => {
 
     // 图片以缩略图预览显示，不在 textarea 中
     await waitFor(() => {
-      expect(screen.getByAltText('hello.png')).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'hello.png' })).toBeInTheDocument();
     });
     expect(screen.getByPlaceholderText('现在的想法是...')).toHaveValue('');
 

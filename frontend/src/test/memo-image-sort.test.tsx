@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoComposer } from '../components/MemoComposer';
@@ -31,12 +32,112 @@ describe('SortableImagePreviewList fallback controls', () => {
       />,
     );
 
-    fireEvent.click(screen.getByLabelText('右移 a.png'));
+    fireEvent.click(screen.getByLabelText('下移 a.png'));
 
     expect(onReorder).toHaveBeenCalledWith([
       { id: 'b', url: 'https://cdn.example.com/b.png', name: 'b.png' },
       { id: 'a', url: 'https://cdn.example.com/a.png', name: 'a.png' },
     ]);
+  });
+
+  it('shows move buttons on each image tile', () => {
+    render(
+      <SortableImagePreviewList
+        items={[
+          { id: 'a', url: 'https://cdn.example.com/a.png', name: 'a.png' },
+          { id: 'b', url: 'https://cdn.example.com/b.png', name: 'b.png' },
+        ]}
+        onReorder={() => undefined}
+        onRemove={() => undefined}
+      />,
+    );
+
+    expect(screen.getByLabelText('下移 a.png')).toBeInTheDocument();
+    expect(screen.getByLabelText('上移 b.png')).toBeInTheDocument();
+  });
+});
+
+describe('SortableImagePreviewList drag interactions', () => {
+  it('reorders items via pointer drag on the image tile', () => {
+    const Harness = () => {
+      const [items, setItems] = useState([
+        { id: 'a', url: 'https://cdn.example.com/a.png', name: 'a.png' },
+        { id: 'b', url: 'https://cdn.example.com/b.png', name: 'b.png' },
+      ]);
+
+      return (
+        <SortableImagePreviewList
+          items={items}
+          onReorder={setItems}
+          onRemove={() => undefined}
+        />
+      );
+    };
+
+    render(<Harness />);
+
+    const target = screen.getByTestId('sortable-image-item-b');
+    Object.defineProperty(document, 'elementFromPoint', {
+      value: vi.fn(() => target),
+      configurable: true,
+    });
+
+    fireEvent.pointerDown(screen.getByTestId('sortable-image-item-a'), {
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+      button: 0,
+    });
+    // Window-level listeners receive pointermove/pointerup regardless of
+    // which element the pointer is physically over.
+    fireEvent.pointerMove(window, {
+      pointerId: 1,
+      clientX: 120,
+      clientY: 10,
+    });
+    fireEvent.pointerUp(window, {
+      pointerId: 1,
+      clientX: 120,
+      clientY: 10,
+    });
+
+    expect(screen.getAllByTestId(/sortable-image-item-/).map((node) => node.getAttribute('data-sortable-item'))).toEqual(['b', 'a']);
+  });
+
+  it('suppresses the native context menu on draggable image tiles', () => {
+    render(
+      <SortableImagePreviewList
+        items={[
+          { id: 'a', url: 'https://cdn.example.com/a.png', name: 'a.png' },
+        ]}
+        onReorder={() => undefined}
+        onRemove={() => undefined}
+      />,
+    );
+
+    const item = screen.getByTestId('sortable-image-item-a');
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+
+    item.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('suppresses the native image dragstart behavior', () => {
+    render(
+      <SortableImagePreviewList
+        items={[
+          { id: 'a', url: 'https://cdn.example.com/a.png', name: 'a.png' },
+        ]}
+        onReorder={() => undefined}
+        onRemove={() => undefined}
+      />,
+    );
+
+    const item = screen.getByTestId('sortable-image-item-a');
+    const image = item.querySelector('[role="img"]')!;
+    expect(image).toBeTruthy();
+    // With background-image div instead of <img>, native dragstart is not triggered by the browser
   });
 });
 
@@ -133,10 +234,10 @@ describe('memo image order persistence', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText('右移 a.png')).toBeInTheDocument();
+      expect(screen.getByLabelText('下移 a.png')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText('右移 a.png'));
+    fireEvent.click(screen.getByLabelText('下移 a.png'));
     fireEvent.change(screen.getByPlaceholderText('现在的想法是...'), {
       target: { value: '正文' },
     });
@@ -164,10 +265,10 @@ describe('memo image order persistence', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByLabelText('右移 a.png')).toBeInTheDocument();
+      expect(screen.getByLabelText('下移 a.png')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText('右移 a.png'));
+    fireEvent.click(screen.getByLabelText('下移 a.png'));
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {

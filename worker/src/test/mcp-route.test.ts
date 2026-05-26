@@ -208,13 +208,27 @@ describe('MCP endpoint', () => {
     expect(body.error.code).toBe(-32601);
   });
 
-  it('GET returns 405 (server-initiated SSE not supported)', async () => {
+  it('GET returns SSE stream with valid session', async () => {
+    const env = await createTestEnv();
+    // First initialize to get a session ID
+    const initRes = await mcpRequest(env, 'initialize');
+    const sessionId = initRes.headers.get('Mcp-Session-Id')!;
+
+    const res = await app.request('http://localhost/api/mcp', {
+      method: 'GET',
+      headers: { 'X-API-Key': 'test-api-token', 'Mcp-Session-Id': sessionId },
+    }, testEnv(env));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('text/event-stream');
+  });
+
+  it('GET returns 400 without valid session', async () => {
     const env = await createTestEnv();
     const res = await app.request('http://localhost/api/mcp', {
       method: 'GET',
       headers: { 'X-API-Key': 'test-api-token' },
     }, testEnv(env));
-    expect(res.status).toBe(405);
+    expect(res.status).toBe(400);
   });
 
   it('handles DELETE for session termination', async () => {

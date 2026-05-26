@@ -341,11 +341,34 @@ mcpRoutes.post('/', async (c) => {
   return c.json(result);
 });
 
-// --- GET: server-to-client SSE (not supported on Cloudflare Workers) ---
+// --- GET: server-to-client SSE stream ---
+// Streamable HTTP clients open a GET after initialization to receive
+// server-initiated messages.  We keep the stream open (idle) so the
+// MCP SDK's handle_get_stream doesn't treat a 405 as a fatal error.
 
 mcpRoutes.get('/', async (c) => {
-  // MCP spec: servers that do not support server-initiated SSE SHOULD return 405
-  return c.body(null, 405);
+  const sessionId = c.req.header('Mcp-Session-Id');
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return c.body(null, 400);
+  }
+
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  const encoder = new TextEncoder();
+
+  // Send an initial comment to keep the connection alive, then hold open.
+  writer.write(encoder.encode(': ok\n\n'));
+
+  // Cloudflare Workers will terminate long-lived streams when the client
+  // disconnects, so we don't need an explicit close timer.
+
+  return new Response(readable, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  });
 });
 
 // --- DELETE: session termination ---
