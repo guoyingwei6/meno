@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -58,7 +58,7 @@ describe('SortableImagePreviewList fallback controls', () => {
 });
 
 describe('SortableImagePreviewList drag interactions', () => {
-  it('reorders items via pointer drag on the image tile', () => {
+  it('reorders items via mouse drag events', () => {
     const Harness = () => {
       const [items, setItems] = useState([
         { id: 'a', url: 'https://cdn.example.com/a.png', name: 'a.png' },
@@ -82,26 +82,127 @@ describe('SortableImagePreviewList drag interactions', () => {
       configurable: true,
     });
 
-    fireEvent.pointerDown(screen.getByTestId('sortable-image-item-a'), {
-      pointerId: 1,
+    fireEvent.mouseDown(screen.getByTestId('sortable-image-item-a'), {
       clientX: 10,
       clientY: 10,
       button: 0,
     });
-    // Window-level listeners receive pointermove/pointerup regardless of
-    // which element the pointer is physically over.
-    fireEvent.pointerMove(window, {
-      pointerId: 1,
+    fireEvent.mouseMove(window, {
       clientX: 120,
       clientY: 10,
     });
-    fireEvent.pointerUp(window, {
-      pointerId: 1,
+    fireEvent.mouseUp(window, {
       clientX: 120,
       clientY: 10,
     });
 
     expect(screen.getAllByTestId(/sortable-image-item-/).map((node) => node.getAttribute('data-sortable-item'))).toEqual(['b', 'a']);
+  });
+
+  it('starts touch dragging only after a long press', () => {
+    vi.useFakeTimers();
+    try {
+      const Harness = () => {
+        const [items, setItems] = useState([
+          { id: 'a', url: 'https://cdn.example.com/a.png', name: 'a.png' },
+          { id: 'b', url: 'https://cdn.example.com/b.png', name: 'b.png' },
+        ]);
+
+        return (
+          <SortableImagePreviewList
+            items={items}
+            onReorder={setItems}
+            onRemove={() => undefined}
+          />
+        );
+      };
+
+      render(<Harness />);
+
+      const target = screen.getByTestId('sortable-image-item-b');
+      Object.defineProperty(document, 'elementFromPoint', {
+        value: vi.fn(() => target),
+        configurable: true,
+      });
+
+      fireEvent.touchStart(screen.getByTestId('sortable-image-item-a'), {
+        touches: [{ clientX: 10, clientY: 10 }],
+      });
+      act(() => { vi.advanceTimersByTime(449); });
+      fireEvent.touchMove(window, {
+        touches: [{ clientX: 120, clientY: 10 }],
+      });
+
+      expect(screen.getAllByTestId(/sortable-image-item-/).map((node) => node.getAttribute('data-sortable-item'))).toEqual(['a', 'b']);
+
+      fireEvent.touchStart(screen.getByTestId('sortable-image-item-a'), {
+        touches: [{ clientX: 10, clientY: 10 }],
+      });
+      act(() => { vi.advanceTimersByTime(450); });
+      fireEvent.touchMove(window, {
+        touches: [{ clientX: 120, clientY: 10 }],
+      });
+      fireEvent.touchEnd(window, {
+        changedTouches: [{ clientX: 120, clientY: 10 }],
+      });
+
+      expect(screen.getAllByTestId(/sortable-image-item-/).map((node) => node.getAttribute('data-sortable-item'))).toEqual(['b', 'a']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reorders items via pen pointer drag after a long press', () => {
+    vi.useFakeTimers();
+    try {
+      const Harness = () => {
+        const [items, setItems] = useState([
+          { id: 'a', url: 'https://cdn.example.com/a.png', name: 'a.png' },
+          { id: 'b', url: 'https://cdn.example.com/b.png', name: 'b.png' },
+        ]);
+
+        return (
+          <SortableImagePreviewList
+            items={items}
+            onReorder={setItems}
+            onRemove={() => undefined}
+          />
+        );
+      };
+
+      render(<Harness />);
+
+      const target = screen.getByTestId('sortable-image-item-b');
+      Object.defineProperty(document, 'elementFromPoint', {
+        value: vi.fn(() => target),
+        configurable: true,
+      });
+
+      fireEvent.pointerDown(screen.getByTestId('sortable-image-item-a'), {
+        pointerId: 1,
+        pointerType: 'pen',
+        clientX: 10,
+        clientY: 10,
+        button: 0,
+      });
+      act(() => { vi.advanceTimersByTime(450); });
+      fireEvent.pointerMove(window, {
+        pointerId: 1,
+        pointerType: 'pen',
+        clientX: 120,
+        clientY: 10,
+      });
+      fireEvent.pointerUp(window, {
+        pointerId: 1,
+        pointerType: 'pen',
+        clientX: 120,
+        clientY: 10,
+      });
+
+      expect(screen.getAllByTestId(/sortable-image-item-/).map((node) => node.getAttribute('data-sortable-item'))).toEqual(['b', 'a']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('suppresses the native context menu on draggable image tiles', () => {
