@@ -69,7 +69,7 @@ export const SortableImagePreviewList = ({
     id: string;
     startX: number;
     startY: number;
-    isTouch: boolean;
+    mode: 'mouse' | 'touch' | 'pen';
     active: boolean;
     moved: boolean;
     longPressTimer: ReturnType<typeof setTimeout> | null;
@@ -84,12 +84,7 @@ export const SortableImagePreviewList = ({
     return () => { cleanupRef.current?.(); };
   }, []);
 
-  const containerRef = useCallback((el: HTMLDivElement | null) => {
-    if (!el) return;
-    el.addEventListener('contextmenu', (e) => {
-      if ((e.target as HTMLElement).closest('[data-sortable-item]')) e.preventDefault();
-    });
-  }, []);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const removeGhost = () => {
     if (ghostRef.current) {
@@ -128,20 +123,46 @@ export const SortableImagePreviewList = ({
     ghostRef.current.style.top = `${y - 40}px`;
   };
 
-  const startDrag = (id: string, imgUrl: string, clientX: number, clientY: number, isTouch: boolean) => {
+  const tryReorder = useCallback((id: string, clientX: number, clientY: number) => {
+    const el = document.elementFromPoint(clientX, clientY);
+    if (!(el instanceof HTMLElement)) return;
+    const targetEl = el.closest<HTMLElement>('[data-sortable-item]');
+    const targetId = targetEl?.dataset.sortableItem;
+    if (!targetId || targetId === id) return;
+    const cur = itemsRef.current;
+    const from = cur.findIndex((item) => item.id === id);
+    const to = cur.findIndex((item) => item.id === targetId);
+    if (from === -1 || to === -1 || from === to) return;
+    const next = reorderSortableItems(cur, from, to);
+    itemsRef.current = next;
+    onReorderRef.current(next);
+  }, []);
+
+  const endDrag = useCallback((committed = true) => {
+    const drag = dragRef.current;
+    if (drag?.longPressTimer) clearTimeout(drag.longPressTimer);
+    suppressClickRef.current = committed && !!(drag?.active && drag?.moved);
+    removeGhost();
+    cleanupRef.current?.();
+    dragRef.current = null;
+    setDraggingId(null);
+  }, []);
+
+  const startDrag = useCallback((id: string, imgUrl: string, clientX: number, clientY: number, mode: 'mouse' | 'touch' | 'pen') => {
     cleanupRef.current?.();
 
+    const needsLongPress = mode === 'touch' || mode === 'pen';
     dragRef.current = {
       id,
       startX: clientX,
       startY: clientY,
-      isTouch,
-      active: !isTouch,
+      mode,
+      active: !needsLongPress,
       moved: false,
       longPressTimer: null,
     };
 
-    if (isTouch) {
+    if (needsLongPress) {
       dragRef.current.longPressTimer = setTimeout(() => {
         const drag = dragRef.current;
         if (drag?.id === id && !drag.moved) {
@@ -156,73 +177,42 @@ export const SortableImagePreviewList = ({
       setDraggingId(id);
     }
 
-    const tryReorder = (cx: number, cy: number) => {
-      const drag = dragRef.current;
-      if (!drag?.active) return;
-      const el = document.elementFromPoint(cx, cy);
-      if (!(el instanceof HTMLElement)) return;
-      const targetEl = el.closest<HTMLElement>('[data-sortable-item]');
-      const targetId = targetEl?.dataset.sortableItem;
-      if (!targetId || targetId === drag.id) return;
-      const cur = itemsRef.current;
-      const from = cur.findIndex((i) => i.id === drag.id);
-      const to = cur.findIndex((i) => i.id === targetId);
-      if (from === -1 || to === -1 || from === to) return;
-      const next = reorderSortableItems(cur, from, to);
-      itemsRef.current = next;
-      onReorderRef.current(next);
-    };
-
-    const onPointerMove = (e: PointerEvent) => {
+    const onMove = (clientXMove: number, clientYMove: number, preventDefault?: () => void) => {
       const drag = dragRef.current;
       if (!drag) return;
-      const dx = Math.abs(e.clientX - drag.startX);
-      const dy = Math.abs(e.clientY - drag.startY);
+      const dx = Math.abs(clientXMove - drag.startX);
+      const dy = Math.abs(clientYMove - drag.startY);
       if (!drag.moved && (dx > SCROLL_CANCEL_PX || dy > SCROLL_CANCEL_PX)) {
         drag.moved = true;
-        if (drag.isTouch && !drag.active) {
-          // Moved before long-press — treat as scroll
+        if (drag.mode !== 'mouse' && !drag.active) {
           endDrag(false);
           return;
         }
       }
       if (drag.active) {
-        moveGhost(e.clientX, e.clientY);
-        tryReorder(e.clientX, e.clientY);
+        preventDefault?.();
+        moveGhost(clientXMove, clientYMove);
+        tryReorder(drag.id, clientXMove, clientYMove);
       }
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      onMove(e.clientX, e.clientY, () => e.preventDefault());
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      onMove(e.clientX, e.clientY, () => e.preventDefault());
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
       const t = e.touches[0];
       if (!t) return;
-      const dx = Math.abs(t.clientX - drag.startX);
-      const dy = Math.abs(t.clientY - drag.startY);
-      if (!drag.moved && (dx > SCROLL_CANCEL_PX || dy > SCROLL_CANCEL_PX)) {
-        drag.moved = true;
-        if (!drag.active) {
-          endDrag(false);
-          return;
-        }
-      }
-      if (!drag.active) return;
-      e.preventDefault();
-      moveGhost(t.clientX, t.clientY);
-      tryReorder(t.clientX, t.clientY);
-    };
-
-    const endDrag = (committed = true) => {
-      const drag = dragRef.current;
-      if (drag?.longPressTimer) clearTimeout(drag.longPressTimer);
-      suppressClickRef.current = committed && !!(drag?.active && drag?.moved);
-      removeGhost();
-      cleanup();
-      dragRef.current = null;
-      setDraggingId(null);
+      onMove(t.clientX, t.clientY, () => e.preventDefault());
     };
 
     const cleanup = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
@@ -232,23 +222,33 @@ export const SortableImagePreviewList = ({
       cleanupRef.current = null;
     };
 
+    const onMouseUp = () => endDrag(true);
     const onPointerUp = () => endDrag(true);
     const onPointerCancel = () => endDrag(false);
     const onTouchEnd = () => endDrag(true);
 
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('pointercancel', onPointerCancel);
-    window.addEventListener('touchmove', onTouchMove, { passive: false });
-    window.addEventListener('touchend', onTouchEnd);
-    window.addEventListener('touchcancel', onTouchEnd);
+    if (mode === 'mouse') {
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    } else if (mode === 'pen') {
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerCancel);
+    } else {
+      window.addEventListener('touchmove', onTouchMove, { passive: false });
+      window.addEventListener('touchend', onTouchEnd);
+      window.addEventListener('touchcancel', onTouchEnd);
+    }
     cleanupRef.current = cleanup;
-  };
+  }, [endDrag, tryReorder]);
 
   return (
     <div
       ref={containerRef}
       style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '4px 20px 8px', ...containerStyle }}
+      onContextMenu={(e) => {
+        if ((e.target as HTMLElement).closest('[data-sortable-item]')) e.preventDefault();
+      }}
     >
       {items.map((item, index) => {
         const isDragging = draggingId === item.id;
@@ -271,14 +271,23 @@ export const SortableImagePreviewList = ({
             }}
             onPointerDown={(e) => {
               if ((e.target as HTMLElement).closest('button')) return;
-              if (e.pointerType === 'mouse' && e.button !== 0) return;
-              // Do NOT call e.preventDefault() here for mouse — some browsers stop
-              // pointermove from firing when pointerdown default is prevented.
-              // Instead rely on CSS touch-action/user-select to suppress defaults.
-              const isTouch = e.pointerType === 'touch' || e.pointerType === 'pen';
-              if (isTouch) e.preventDefault(); // needed for touch to suppress callout
-              startDrag(item.id, item.url, e.clientX, e.clientY, isTouch);
+              if (e.pointerType !== 'pen') return;
+              e.preventDefault();
+              startDrag(item.id, item.url, e.clientX, e.clientY, 'pen');
             }}
+            onMouseDown={(e) => {
+              if ((e.target as HTMLElement).closest('button')) return;
+              if (e.button !== 0) return;
+              startDrag(item.id, item.url, e.clientX, e.clientY, 'mouse');
+            }}
+            onTouchStart={(e) => {
+              if ((e.target as HTMLElement).closest('button')) return;
+              const touch = e.touches[0];
+              if (!touch) return;
+              e.preventDefault();
+              startDrag(item.id, item.url, touch.clientX, touch.clientY, 'touch');
+            }}
+            onDragStart={(e) => e.preventDefault()}
             onClick={() => {
               if (suppressClickRef.current) { suppressClickRef.current = false; return; }
               onPreviewRef.current?.(index);
