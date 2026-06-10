@@ -986,7 +986,7 @@ const editStyles: Record<string, React.CSSProperties> = {
     height: 80,
     objectFit: 'cover',
     borderRadius: 8,
-    background: '#f5f5f5',
+    backgroundColor: '#f5f5f5',
   },
   imageRemove: {
     position: 'absolute',

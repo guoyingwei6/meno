@@ -92,4 +92,23 @@ describe('MemoCard edit actions', () => {
       displayDate: '2026-03-26',
     });
   });
+
+  it('shows inline edited image thumbnails before dragging', () => {
+    const memo = {
+      ...baseMemo,
+      visibility: 'public' as const,
+      content: '正文\n![](https://cdn.example.com/uploads/a.png)',
+      hasImages: true,
+      imageCount: 1,
+    };
+
+    render(<MemoCard memo={memo} isAuthor />);
+
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+
+    expect(screen.getByRole('img', { name: 'a.png' })).toHaveStyle({
+      backgroundImage: 'url(https://cdn.example.com/uploads/a.png)',
+    });
+  });
 });
