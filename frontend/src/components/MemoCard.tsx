@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getCaretCoords, getRecentTags, recordRecentTag } from '../lib/caret';
 import { uploadFile } from '../lib/api';
 import { extractMarkdownImageUrls, stripMarkdownImageSyntax, stripTagSyntax } from '../lib/content';
+import { SortableImagePreviewList } from './SortableImagePreviewList';
 import type { MemoSummary } from '../types/shared';
 import { useTheme, colors } from '../lib/theme';
 import { getAiConfig, chatCompletionsUrl } from '../lib/ai-config';
@@ -29,6 +30,8 @@ const formatTime = (iso: string) => {
   const d = new Date(iso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
+
+const getImageNameFromUrl = (url: string) => decodeURIComponent(url.split('/').pop()?.split('?')[0] || '图片');
 
 const countWords = (text: string) => {
   const cleaned = text.replace(/!\[.*?\]\(.*?\)/g, '').replace(/[#*_~`>\-\[\]()]/g, '').trim();
@@ -445,14 +448,14 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdi
             />
           </div>
           {editImages.length > 0 ? (
-            <div style={editStyles.imageGrid}>
-              {editImages.map((url, index) => (
-                <div key={`${url}-${index}`} style={editStyles.imageWrap}>
-                  <img src={url} alt="" style={editStyles.imageThumb} />
-                  <button type="button" aria-label="删除图片" style={editStyles.imageRemove} onClick={() => setEditImages((prev) => prev.filter((_, i) => i !== index))}>✕</button>
-                </div>
-              ))}
-            </div>
+            <SortableImagePreviewList
+              items={editImages.map((url) => ({ id: url, url, name: getImageNameFromUrl(url), alt: getImageNameFromUrl(url) }))}
+              onReorder={(nextItems) => setEditImages(nextItems.map((item) => item.url))}
+              onRemove={(index) => setEditImages((prev) => prev.filter((_, i) => i !== index))}
+              containerStyle={editStyles.imageGrid}
+              thumbStyle={editStyles.imageThumb}
+              removeButtonStyle={editStyles.imageRemove}
+            />
           ) : null}
           <div style={{ ...editStyles.toolbar, borderTopColor: c.borderLight }}>
             <div style={editStyles.toolsRow}>

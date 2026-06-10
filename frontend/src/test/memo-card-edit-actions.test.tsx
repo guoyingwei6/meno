@@ -68,4 +68,28 @@ describe('MemoCard edit actions', () => {
 
     expect(screen.queryByRole('button', { name: '编辑' })).toBeNull();
   });
+
+  it('saves inline edited images in the reordered sequence', () => {
+    const onSaveEdit = vi.fn();
+    const memo = {
+      ...baseMemo,
+      visibility: 'public' as const,
+      content: '正文\n![](https://cdn.example.com/uploads/a.png)\n![](https://cdn.example.com/uploads/b.png)',
+      hasImages: true,
+      imageCount: 2,
+    };
+
+    render(<MemoCard memo={memo} isAuthor onSaveEdit={onSaveEdit} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    fireEvent.click(screen.getByLabelText('下移 a.png'));
+    fireEvent.click(screen.getByRole('button', { name: '保存编辑' }));
+
+    expect(onSaveEdit).toHaveBeenCalledWith(memo, {
+      content: '正文\n![](https://cdn.example.com/uploads/b.png)\n![](https://cdn.example.com/uploads/a.png)',
+      visibility: 'public',
+      displayDate: '2026-03-26',
+    });
+  });
 });
