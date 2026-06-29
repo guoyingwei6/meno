@@ -8,6 +8,8 @@ import { publicRoutes } from './routes/public';
 import { quickApiRoutes } from './routes/quick-api';
 import { mcpRoutes } from './routes/mcp';
 import { uploadRoutes } from './routes/upload';
+import { v1Routes } from './routes/v1';
+import { createOpenApiDocument } from './contracts/openapi';
 import { getAssetResponse } from './storage/r2';
 
 export const app = new Hono();
@@ -15,10 +17,11 @@ export const app = new Hono();
 app.use('/api/*', cors({
   origin: ['https://meno.guoyingwei.top', 'https://meno-680.pages.dev', 'http://127.0.0.1:5173', 'http://localhost:5173'],
   allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type'],
+  allowHeaders: ['Authorization', 'Content-Type', 'X-API-Key'],
   credentials: true,
 }));
 
+app.get('/openapi.json', (c) => c.json(createOpenApiDocument()));
 app.route('/api/public', publicRoutes);
 app.route('/api', authRoutes);
 app.route('/api', memoRoutes);
@@ -27,6 +30,7 @@ app.route('/api', uploadRoutes);
 app.route('/api/dashboard', dashboardRoutes);
 app.route('/api/quick', quickApiRoutes);
 app.route('/api/mcp', mcpRoutes);
+app.route('/api/v1', v1Routes);
 
 // Fallback: serve old image URLs at /assets/* (before prefix was changed to /api/assets/*)
 app.get('/assets/:key{.+}', async (c) => {
