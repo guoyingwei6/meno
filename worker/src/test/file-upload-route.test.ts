@@ -21,8 +21,9 @@ describe('POST /api/uploads', () => {
     );
 
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as { url: string; objectKey: string; fileName: string };
+    const payload = (await response.json()) as { url: string; previewUrl: string; objectKey: string; fileName: string };
     expect(payload.url).toContain('https://api.meno.guoyingwei.top/api/assets/uploads/');
+    expect(payload.previewUrl).toContain('https://api.meno.guoyingwei.top/cdn-cgi/image/width=720,quality=75,format=auto/https://api.meno.guoyingwei.top/api/assets/uploads/');
     expect(payload.objectKey).toMatch(/^uploads\/\d{4}\/\d{2}\/\d{17}\.png$/);
     expect(payload.fileName).toBe('hello.png');
   });
@@ -44,9 +45,10 @@ describe('POST /api/uploads', () => {
       env,
     );
 
-    const row = await env.DB.prepare('SELECT object_key, original_url, mime_type FROM assets LIMIT 1').first<Record<string, unknown>>();
+    const row = await env.DB.prepare('SELECT object_key, original_url, preview_url, mime_type FROM assets LIMIT 1').first<Record<string, unknown>>();
     expect(row?.object_key).toMatch(/^uploads\/\d{4}\/\d{2}\/\d{17}\.png$/);
     expect(row?.original_url).toContain('https://api.meno.guoyingwei.top/api/assets/uploads/');
+    expect(row?.preview_url).toContain('https://api.meno.guoyingwei.top/cdn-cgi/image/width=720,quality=75,format=auto/https://api.meno.guoyingwei.top/api/assets/uploads/');
     expect(row?.mime_type).toBe('image/png');
   });
 

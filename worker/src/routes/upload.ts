@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { createAsset } from '../db/asset-repository';
 import type { WorkerBindings } from '../db/client';
+import { getImagePreviewUrl } from '../lib/image-preview';
 import { isAuthorSession } from '../lib/auth';
 import { getAssetResponse, storeUpload } from '../storage/r2';
 
@@ -49,15 +50,18 @@ uploadRoutes.post('/uploads', async (c) => {
   const uploadFile = file as File;
   const objectKey = createUploadKey(uploadFile.name);
   const url = `${c.env.ASSET_PUBLIC_BASE_URL}/${objectKey}`;
+  const previewUrl = uploadFile.type.startsWith('image/') ? getImagePreviewUrl(url) : null;
   await storeUpload(c.env.ASSETS, { objectKey, file: uploadFile });
   await createAsset(c.env.DB, {
     objectKey,
     originalUrl: url,
+    previewUrl,
     mimeType: uploadFile.type || 'application/octet-stream',
   });
 
   return c.json({
     url,
+    previewUrl,
     objectKey,
     fileName: uploadFile.name,
   });

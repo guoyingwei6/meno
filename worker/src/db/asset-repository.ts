@@ -3,6 +3,7 @@ export const createAsset = async (
   input: {
     objectKey: string;
     originalUrl: string;
+    previewUrl?: string | null;
     mimeType: string;
   },
 ) => {
@@ -10,6 +11,6 @@ export const createAsset = async (
     .prepare(
       'INSERT INTO assets (memo_id, object_key, original_url, preview_url, mime_type, width, height, size, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     )
-    .bind(0, input.objectKey, input.originalUrl, null, input.mimeType, null, null, null, new Date().toISOString())
+    .bind(0, input.objectKey, input.originalUrl, input.previewUrl ?? null, input.mimeType, null, null, null, new Date().toISOString())
     .run();
 };

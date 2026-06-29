@@ -5,6 +5,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { getCaretCoords, getRecentTags, recordRecentTag } from '../lib/caret';
 import { createMemoShare, uploadFile } from '../lib/api';
 import { extractMarkdownImageUrls, shouldRenderMarkdown, stripMarkdownImageSyntax, stripTagSyntax } from '../lib/content';
+import { getImagePreviewUrl } from '../lib/image-preview';
 import { SortableImagePreviewList } from './SortableImagePreviewList';
 import type { MemoSummary } from '../types/shared';
 import { useTheme, colors } from '../lib/theme';
@@ -645,7 +646,7 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
       {imageUrls.length > 0 ? (
         <div style={styles.previewGrid}>
           {imageUrls.map((url, i) => (
-            <img key={url} src={url} alt="memo preview" loading="lazy" decoding="async" style={styles.previewImage} onClick={() => setLightboxIndex(i)} />
+            <img key={url} src={getImagePreviewUrl(url)} alt="memo preview" loading="lazy" decoding="async" style={styles.previewImage} onClick={() => setLightboxIndex(i)} />
           ))}
         </div>
       ) : null}

@@ -29,7 +29,7 @@ describe('MemoCard image previews', () => {
 
     const images = screen.getAllByRole('img');
     expect(images).toHaveLength(2);
-    expect(images[0]).toHaveAttribute('src', 'https://cdn.example.com/uploads/a.png');
-    expect(images[1]).toHaveAttribute('src', 'https://cdn.example.com/uploads/b.png');
+    expect(images[0]).toHaveAttribute('src', 'https://cdn.example.com/cdn-cgi/image/width=720,quality=75,format=auto/https://cdn.example.com/uploads/a.png');
+    expect(images[1]).toHaveAttribute('src', 'https://cdn.example.com/cdn-cgi/image/width=720,quality=75,format=auto/https://cdn.example.com/uploads/b.png');
   });
 });

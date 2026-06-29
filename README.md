@@ -229,6 +229,7 @@ curl -X POST https://your-api.workers.dev/api/mcp \
 - 优化首屏加载：`DeepChatModal`、`ImportExportModal`、`AiConfigModal` 改为 lazy import，避免随首页主 bundle 一起加载。
 - 新增 `memo_shares` 和 `app_settings` 数据模型：私密 memo 可生成 share token 链接，settings 支持站点标题和默认可见性。
 - 私密 memo 的卡片分享按钮已接入 share token，公开 memo 仍复制原公开详情页链接。
+- 优化图片缩略图链路：上传图片时返回并保存 Cloudflare Image Resizing `previewUrl`，列表页优先加载缩略图，点击预览仍打开原图。
 - 新增稳定外部 API：`/api/v1/memos` 支持笔记列表、创建、读取、更新和软删除，`/api/v1/export` 支持导出包含回收站在内的 memo 数据。
 - 新增 `/openapi.json` 机器可读 API 文档，并补充 v1 请求校验层，复用现有 `API_TOKEN` 鉴权。
 - 新增 v1 API 测试，覆盖 OpenAPI、鉴权、列表、创建、更新、删除和导出流程。
