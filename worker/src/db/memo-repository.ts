@@ -421,14 +421,10 @@ export const getPublicStats = async (db: D1Database): Promise<{ total: number; t
        WHERE memos.visibility = 'public' AND memos.deleted_at IS NULL`,
     )
     .first<{ count: number }>();
-  const span = await db
-    .prepare("SELECT CAST((julianday('now') - julianday(MIN(display_date))) AS INTEGER) + 1 as days FROM memos WHERE visibility = 'public' AND deleted_at IS NULL")
-    .first<{ days: number }>();
-
   return {
     total: total?.count ?? 0,
     tags: tags?.count ?? 0,
-    streakDays: span?.days ?? 0,
+    streakDays: await getPublicStreakDays(db),
   };
 };
 
@@ -546,18 +542,46 @@ export const getDashboardStats = async (db: D1Database): Promise<{
        WHERE memos.visibility = 'public' AND memos.deleted_at IS NULL`,
     )
     .first<{ count: number }>();
-  const spanRow = await db
-    .prepare("SELECT CAST((julianday('now') - julianday(MIN(display_date))) AS INTEGER) + 1 as days FROM memos WHERE visibility = 'public' AND deleted_at IS NULL")
-    .first<{ days: number }>();
-
   return {
     total: total?.count ?? 0,
     public: publicCount?.count ?? 0,
     private: privateCount?.count ?? 0,
     trash: trashCount?.count ?? 0,
     tags: tagsCount?.count ?? 0,
-    streakDays: spanRow?.days ?? 0,
+    streakDays: await getPublicStreakDays(db),
   };
+};
+
+const getPublicStreakDays = async (db: D1Database): Promise<number> => {
+  const { results } = await db
+    .prepare(
+      `SELECT DISTINCT display_date as date
+       FROM memos
+       WHERE visibility = 'public' AND deleted_at IS NULL
+       ORDER BY display_date DESC`,
+    )
+    .all<{ date: string }>();
+
+  const dates = (results ?? [])
+    .map((row) => String(row.date))
+    .filter(Boolean);
+  if (dates.length === 0) {
+    return 0;
+  }
+
+  let streakDays = 1;
+  let previous = new Date(`${dates[0]}T00:00:00Z`);
+  for (const date of dates.slice(1)) {
+    const current = new Date(`${date}T00:00:00Z`);
+    const diffDays = Math.round((previous.getTime() - current.getTime()) / 86_400_000);
+    if (diffDays !== 1) {
+      break;
+    }
+    streakDays += 1;
+    previous = current;
+  }
+
+  return streakDays;
 };
 
 export const backupMemosToR2 = async (db: D1Database, r2: R2Bucket, keepDays = 365): Promise<void> => {
