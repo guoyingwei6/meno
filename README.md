@@ -50,6 +50,8 @@
 ### API
 - Quick API：通过 `X-API-Key` 认证，支持 POST 创建笔记和上传图片
 - 适配苹果快捷指令、自动化工具等场景
+- 稳定外部 API：`/api/v1/memos` 支持列表、创建、读取、更新、软删除，`/api/v1/export` 支持完整导出
+- OpenAPI 文档：`/openapi.json` 提供机器可读接口说明，方便 AI 助手、客户端和自动化工具接入
 - MCP Server：实现 MCP (Model Context Protocol) Streamable HTTP 端点，让 AI 助手可以对笔记进行增删改查
 
 ## 技术栈
@@ -107,6 +109,40 @@ npx wrangler pages deploy dist --project-name=meno
 ```
 
 详细配置参考 `docs/` 目录。
+
+### 部署前验证
+
+```bash
+# 检查 worker/wrangler.local.toml 关键配置
+npm run config:check
+
+# 部署前严格检查，避免 Wrangler dry-run/deploy 打印 secret 类变量
+npm run config:check:deploy
+
+# 配置检查 + 类型检查 + 测试
+npm run verify
+
+# 构建前端并对 Worker 做 dry-run，不直接上线
+npm run deploy:dry-run
+```
+
+正式部署：
+
+```bash
+# 先 verify，再部署前端和 Worker
+npm run deploy
+
+# 或拆开部署
+npm run deploy:frontend
+npm run deploy:worker
+```
+
+说明：
+
+- Worker 部署必须使用 `worker/wrangler.local.toml`。
+- `worker/wrangler.toml` 是提交到仓库的占位模板，不用于真实部署。
+- `GITHUB_CLIENT_SECRET`、`SESSION_SECRET`、`API_TOKEN` 等 secret 类配置应使用 Wrangler secrets；部署前严格检查会阻止它们留在 `[vars]` 中。
+- Agent 部署流程参考 `docs/agent-deploy.md`，人工部署流程参考 `docs/deploy-runbook.md`。
 
 ## 知识库启用
 
@@ -182,6 +218,22 @@ curl -X POST https://your-api.workers.dev/api/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
+
+## 更新日志
+
+### 2026-06-29
+
+- 新增稳定外部 API：`/api/v1/memos` 支持笔记列表、创建、读取、更新和软删除，`/api/v1/export` 支持导出包含回收站在内的 memo 数据。
+- 新增 `/openapi.json` 机器可读 API 文档，并补充 v1 请求校验层，复用现有 `API_TOKEN` 鉴权。
+- 新增 v1 API 测试，覆盖 OpenAPI、鉴权、列表、创建、更新、删除和导出流程。
+- 修复 `streakDays` 统计逻辑，从“最早公开笔记到今天的跨度”改为按公开 memo 的连续 `display_date` 计算，避免日期变化导致测试和侧边栏统计漂移。
+- 修复 MCP 路由测试的 TypeScript 类型标注，使 Worker `typecheck` 可以通过。
+- 新增部署工程化脚本：`config:check`、`verify`、`deploy:dry-run`、`deploy:frontend`、`deploy:worker` 和 `deploy`，统一部署前检查与发布入口。
+- 新增 `docs/agent-deploy.md` 和 `docs/deploy-runbook.md`，明确 Agent/人工部署顺序，并固定 Worker 使用 `worker/wrangler.local.toml`。
+- 修复前端日历筛选测试的硬编码月份，使 `npm run verify` 不再因当前运行月份变化而失败。
+- 加固部署前配置检查：新增 `config:check:deploy`，阻止 secret 类变量留在 `worker/wrangler.local.toml` 的 `[vars]` 中，避免 Wrangler dry-run/deploy 输出敏感值。
+- 优化首页列表性能：`/api/public/memos` 和 `/api/dashboard/memos` 支持 `limit/cursor` 分页，首页默认首屏只拉取 20 条 memo，滚动到底再加载下一页。
+- 优化 `MemoCard` 渲染：缓存图片提取、正文清洗和字数统计结果，纯文本 memo 跳过 `ReactMarkdown`，降低列表滚动和首屏渲染开销。
 
 ## 开源协议
 
