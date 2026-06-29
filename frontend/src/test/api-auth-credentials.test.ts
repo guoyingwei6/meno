@@ -60,4 +60,20 @@ describe('API auth credentials', () => {
       }),
     );
   });
+
+  it('serializes memo pagination parameters', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ memos: [], nextCursor: null }), {
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchDashboardMemos('public', '2026-03-25', { limit: 20, cursor: '40' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/dashboard/memos?view=public&date=2026-03-25&limit=20&cursor=40',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
 });

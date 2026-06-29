@@ -40,4 +40,19 @@ describe('dashboard routes', () => {
     expect(payload.memos).toHaveLength(1);
     expect(payload.memos[0].visibility).toBe('private');
   });
+
+  it('returns a bounded memo page and next cursor for author views', async () => {
+    const env = await createTestEnv();
+    const response = await app.request('http://localhost/api/dashboard/memos?view=all&limit=2', {
+      headers: {
+        Cookie: 'meno_session=valid-author-session',
+      },
+    }, env);
+
+    expect(response.status).toBe(200);
+
+    const payload = (await response.json()) as { memos: MemoSummary[]; nextCursor: string | null };
+    expect(payload.memos).toHaveLength(2);
+    expect(payload.nextCursor).toBe('2');
+  });
 });

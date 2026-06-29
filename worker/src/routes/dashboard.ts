@@ -6,6 +6,27 @@ import { parseTags } from '../lib/tag-parser';
 
 export const dashboardRoutes = new Hono<{ Bindings: WorkerBindings }>();
 
+const parsePagination = (limitParam?: string, cursorParam?: string) => {
+  const rawLimit = Number(limitParam);
+  if (!Number.isFinite(rawLimit) || rawLimit <= 0) {
+    return {};
+  }
+  const limit = Math.min(Math.floor(rawLimit), 100);
+  const cursor = String(Math.max(0, Number(cursorParam ?? 0) || 0));
+  return { limit, cursor };
+};
+
+const buildPagedResponse = <T>(items: T[], limit?: number, cursor?: string) => {
+  if (!limit) return { memos: items };
+  const hasMore = items.length > limit;
+  const memos = hasMore ? items.slice(0, limit) : items;
+  const offset = Math.max(0, Number(cursor ?? 0) || 0);
+  return {
+    memos,
+    nextCursor: hasMore ? String(offset + limit) : null,
+  };
+};
+
 dashboardRoutes.use('*', async (c, next) => {
   if (!isAuthorSession(c.req.header('Cookie'))) {
     return c.json({ message: 'Unauthorized' }, 401);
@@ -45,7 +66,10 @@ dashboardRoutes.get('/memos/search', async (c) => {
 dashboardRoutes.get('/memos', async (c) => {
   const view = (c.req.query('view') ?? 'all') as 'all' | 'public' | 'private' | 'trash' | 'favorited';
   const date = c.req.query('date');
-  return c.json({ memos: await listAuthorMemos(c.env.DB, { view, date }) });
+  const pagination = parsePagination(c.req.query('limit'), c.req.query('cursor'));
+  const fetchLimit = pagination.limit ? pagination.limit + 1 : undefined;
+  const memos = await listAuthorMemos(c.env.DB, { view, date, ...pagination, limit: fetchLimit });
+  return c.json(buildPagedResponse(memos, pagination.limit, pagination.cursor));
 });
 
 dashboardRoutes.get('/tags', async (c) => {

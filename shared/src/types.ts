@@ -57,6 +57,7 @@ export interface MemoAsset {
 
 export interface PublicMemosResponse {
   memos: MemoSummary[];
+  nextCursor?: string | null;
 }
 
 export interface PublicMemoResponse {

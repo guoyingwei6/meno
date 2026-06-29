@@ -17,4 +17,19 @@ describe('GET /api/public/memos', () => {
     expect(payload.memos[0].tags).toEqual(['cloudflare', 'meno']);
     expect(payload.memos[1].tags).toEqual(['serverless']);
   });
+
+  it('returns a bounded page and next cursor when limit is provided', async () => {
+    const env = await createTestEnv();
+    const firstPage = await app.request('http://localhost/api/public/memos?limit=1', {}, env);
+
+    expect(firstPage.status).toBe(200);
+    const firstPayload = (await firstPage.json()) as PublicMemosResponse & { nextCursor: string | null };
+    expect(firstPayload.memos.map((memo) => memo.slug)).toEqual(['public-memo-1']);
+    expect(firstPayload.nextCursor).toBe('1');
+
+    const secondPage = await app.request(`http://localhost/api/public/memos?limit=1&cursor=${firstPayload.nextCursor}`, {}, env);
+    const secondPayload = (await secondPage.json()) as PublicMemosResponse & { nextCursor: string | null };
+    expect(secondPayload.memos.map((memo) => memo.slug)).toEqual(['public-memo-2']);
+    expect(secondPayload.nextCursor).toBeNull();
+  });
 });

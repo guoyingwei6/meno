@@ -18,11 +18,15 @@ interface MemoTimelineProps {
   onFillTagsMemo?: (id: number, newContent: string) => void;
   onPinMemo?: (memo: MemoSummary) => void;
   onFavoriteMemo?: (memo: MemoSummary) => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
-export const MemoTimeline = ({ memos, isAuthor, isTrash, allTags, onOpenMemo, onOpenTag, onSaveEditMemo, onRestoreMemo, onChangeVisibility, onDeleteMemo, onFillTagsMemo, onPinMemo, onFavoriteMemo }: MemoTimelineProps) => {
+export const MemoTimeline = ({ memos, isAuthor, isTrash, allTags, onOpenMemo, onOpenTag, onSaveEditMemo, onRestoreMemo, onChangeVisibility, onDeleteMemo, onFillTagsMemo, onPinMemo, onFavoriteMemo, hasMore, isLoadingMore, onLoadMore }: MemoTimelineProps) => {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const usesServerPaging = Boolean(onLoadMore);
 
   // Reset when memos change (filter/view switch)
   useEffect(() => {
@@ -36,6 +40,10 @@ export const MemoTimeline = ({ memos, isAuthor, isTrash, allTags, onOpenMemo, on
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
+          if (usesServerPaging) {
+            if (hasMore && !isLoadingMore) onLoadMore?.();
+            return;
+          }
           setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, memos.length));
         }
       },
@@ -43,16 +51,18 @@ export const MemoTimeline = ({ memos, isAuthor, isTrash, allTags, onOpenMemo, on
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [memos.length]);
+  }, [hasMore, isLoadingMore, memos.length, onLoadMore, usesServerPaging]);
 
-  const visible = memos.slice(0, visibleCount);
+  const visible = usesServerPaging ? memos : memos.slice(0, visibleCount);
+  const shouldShowSentinel = usesServerPaging ? Boolean(hasMore) : visibleCount < memos.length;
 
   return (
     <section style={styles.timeline}>
       {visible.map((memo) => (
         <MemoCard key={memo.id} memo={memo} isAuthor={isAuthor} isTrash={isTrash} allTags={allTags} onOpen={onOpenMemo} onOpenTag={onOpenTag} onSaveEdit={onSaveEditMemo} onRestore={onRestoreMemo} onChangeVisibility={onChangeVisibility} onDelete={onDeleteMemo} onFillTags={onFillTagsMemo} onPin={onPinMemo} onFavorite={onFavoriteMemo} />
       ))}
-      {visibleCount < memos.length && <div ref={sentinelRef} style={styles.sentinel} />}
+      {shouldShowSentinel && <div ref={sentinelRef} style={styles.sentinel} />}
+      {isLoadingMore ? <div style={styles.loadingMore}>加载更多...</div> : null}
     </section>
   );
 };
@@ -65,5 +75,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
   sentinel: {
     height: 1,
+  },
+  loadingMore: {
+    padding: '8px 0',
+    textAlign: 'center',
+    color: '#999',
+    fontSize: 13,
   },
 };

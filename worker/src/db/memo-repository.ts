@@ -12,6 +12,13 @@ interface CreateMemoInput {
 interface AuthorViewQuery {
   view: 'all' | 'public' | 'private' | 'trash' | 'favorited';
   date?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+interface PaginationQuery {
+  limit?: number;
+  cursor?: string;
 }
 
 const mapMemoRow = (row: Record<string, unknown>): MemoSummary => ({
@@ -96,7 +103,14 @@ export const createMemo = async (db: D1Database, input: CreateMemoInput): Promis
   return { ...memo, tags, assets: [] };
 };
 
-export const listPublicMemos = async (db: D1Database, query: { tag?: string; date?: string }): Promise<MemoSummary[]> => {
+const paginationSql = (query: PaginationQuery, params: unknown[]) => {
+  if (!query.limit) return '';
+  const offset = Math.max(0, Number(query.cursor ?? 0) || 0);
+  params.push(query.limit, offset);
+  return ' LIMIT ? OFFSET ?';
+};
+
+export const listPublicMemos = async (db: D1Database, query: { tag?: string; date?: string } & PaginationQuery): Promise<MemoSummary[]> => {
   const clauses = ['visibility = ?', 'deleted_at IS NULL'];
   const params: unknown[] = ['public'];
 
@@ -111,7 +125,7 @@ export const listPublicMemos = async (db: D1Database, query: { tag?: string; dat
   }
 
   const { results } = await db
-    .prepare(`SELECT * FROM memos WHERE ${clauses.join(' AND ')} ORDER BY pinned_at IS NULL ASC, pinned_at DESC, display_date DESC, created_at DESC`)
+    .prepare(`SELECT * FROM memos WHERE ${clauses.join(' AND ')} ORDER BY pinned_at IS NULL ASC, pinned_at DESC, display_date DESC, created_at DESC, id DESC${paginationSql(query, params)}`)
     .bind(...params)
     .all();
 
@@ -421,6 +435,7 @@ export const getPublicStats = async (db: D1Database): Promise<{ total: number; t
        WHERE memos.visibility = 'public' AND memos.deleted_at IS NULL`,
     )
     .first<{ count: number }>();
+
   return {
     total: total?.count ?? 0,
     tags: tags?.count ?? 0,
@@ -452,7 +467,7 @@ export const listAuthorMemos = async (db: D1Database, query: AuthorViewQuery): P
   }
 
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const { results } = await db.prepare(`SELECT * FROM memos ${where} ORDER BY pinned_at IS NULL ASC, pinned_at DESC, display_date DESC, created_at DESC`).bind(...params).all();
+  const { results } = await db.prepare(`SELECT * FROM memos ${where} ORDER BY pinned_at IS NULL ASC, pinned_at DESC, display_date DESC, created_at DESC, id DESC${paginationSql(query, params)}`).bind(...params).all();
 
   return attachRelations(db, (results ?? []).map((row) => mapMemoRow(row as Record<string, unknown>)));
 };
@@ -542,6 +557,7 @@ export const getDashboardStats = async (db: D1Database): Promise<{
        WHERE memos.visibility = 'public' AND memos.deleted_at IS NULL`,
     )
     .first<{ count: number }>();
+
   return {
     total: total?.count ?? 0,
     public: publicCount?.count ?? 0,

@@ -4,13 +4,35 @@ import type { WorkerBindings } from '../db/client';
 
 export const publicRoutes = new Hono<{ Bindings: WorkerBindings }>();
 
+const parsePagination = (limitParam?: string, cursorParam?: string) => {
+  const rawLimit = Number(limitParam);
+  if (!Number.isFinite(rawLimit) || rawLimit <= 0) {
+    return {};
+  }
+  const limit = Math.min(Math.floor(rawLimit), 100);
+  const cursor = String(Math.max(0, Number(cursorParam ?? 0) || 0));
+  return { limit, cursor };
+};
+
+const buildPagedResponse = <T>(items: T[], limit?: number, cursor?: string) => {
+  if (!limit) return { memos: items };
+  const hasMore = items.length > limit;
+  const memos = hasMore ? items.slice(0, limit) : items;
+  const offset = Math.max(0, Number(cursor ?? 0) || 0);
+  return {
+    memos,
+    nextCursor: hasMore ? String(offset + limit) : null,
+  };
+};
+
 publicRoutes.get('/memos', async (c) => {
   const tag = c.req.query('tag');
   const date = c.req.query('date');
+  const pagination = parsePagination(c.req.query('limit'), c.req.query('cursor'));
+  const fetchLimit = pagination.limit ? pagination.limit + 1 : undefined;
+  const memos = await listPublicMemos(c.env.DB, { tag, date, ...pagination, limit: fetchLimit });
 
-  return c.json({
-    memos: await listPublicMemos(c.env.DB, { tag, date }),
-  });
+  return c.json(buildPagedResponse(memos, pagination.limit, pagination.cursor));
 });
 
 publicRoutes.get('/memos/search', async (c) => {

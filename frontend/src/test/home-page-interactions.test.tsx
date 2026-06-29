@@ -157,6 +157,22 @@ describe('HomePage interactions', () => {
     fireEvent.click(targetArticle!.parentElement!);
   });
 
+  it('requests only the first memo page on initial load', async () => {
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <HomePage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByRole('button', { name: '#serverless' });
+
+    expect(fetch).toHaveBeenCalledWith('/api/dashboard/memos?view=public&limit=20', { credentials: 'include' });
+  });
+
   it('navigates to tag page when a tag pill is clicked', async () => {
     const queryClient = new QueryClient();
 
@@ -188,7 +204,7 @@ describe('HomePage interactions', () => {
     fireEvent.click(await screen.findByRole('button', { name: '私密笔记' }));
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith('/api/dashboard/memos?view=private', { credentials: 'include' });
+      expect(fetch).toHaveBeenCalledWith('/api/dashboard/memos?view=private&limit=20', { credentials: 'include' });
     });
   });
 
@@ -207,7 +223,9 @@ describe('HomePage interactions', () => {
     fireEvent.click(dayButton);
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenLastCalledWith('/api/dashboard/memos?view=public&date=2026-04-16', { credentials: 'include' });
+      const now = new Date();
+      const currentMonthDay = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-16`;
+      expect(fetch).toHaveBeenLastCalledWith(`/api/dashboard/memos?view=public&date=${currentMonthDay}&limit=20`, { credentials: 'include' });
     });
   });
 });

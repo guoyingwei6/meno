@@ -12,3 +12,7 @@ export const stripTagSyntax = (content: string): string => {
     .replace(/(```[\s\S]*?```|`[^`\n]+`)|(?:^|\s)#[\p{L}\p{N}_\-/]+[\p{L}\p{N}_-]/gu, (match, code) => code ?? '')
     .replace(/^\s+/, '').replace(/\s+$/, '').replace(/\n{3,}/g, '\n\n');
 };
+
+export const shouldRenderMarkdown = (content: string): boolean => {
+  return /(^|\s)(#{1,6}\s|[-*+]\s|\d+\.\s|>|```)|[*_~`[\]<]|!\[.*?\]\(https?:\/\/[^)]+\)|\[[^\]]+\]\([^)]+\)/m.test(content);
+};

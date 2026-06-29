@@ -1,10 +1,10 @@
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import { createPortal } from 'react-dom';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { getCaretCoords, getRecentTags, recordRecentTag } from '../lib/caret';
 import { uploadFile } from '../lib/api';
-import { extractMarkdownImageUrls, stripMarkdownImageSyntax, stripTagSyntax } from '../lib/content';
+import { extractMarkdownImageUrls, shouldRenderMarkdown, stripMarkdownImageSyntax, stripTagSyntax } from '../lib/content';
 import { SortableImagePreviewList } from './SortableImagePreviewList';
 import type { MemoSummary } from '../types/shared';
 import { useTheme, colors } from '../lib/theme';
@@ -89,7 +89,7 @@ const VoiceNoteBlock = ({ voiceNote, isDark }: { voiceNote?: MemoSummary['voiceN
   );
 };
 
-export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdit, onRestore, onChangeVisibility, onDelete, allTags, onFillTags, onPin, onFavorite }: MemoCardProps) => {
+const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdit, onRestore, onChangeVisibility, onDelete, allTags, onFillTags, onPin, onFavorite }: MemoCardProps) => {
   const { isDark } = useTheme();
   const c = colors(isDark);
   const [expanded, setExpanded] = useState(false);
@@ -110,10 +110,11 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdi
   const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
   const dismissedEditTagMatchRef = useRef<string | null>(null);
-  const imageUrls = extractMarkdownImageUrls(memo.content);
-  const contentText = stripTagSyntax(stripMarkdownImageSyntax(memo.content));
+  const imageUrls = useMemo(() => extractMarkdownImageUrls(memo.content), [memo.content]);
+  const contentText = useMemo(() => stripTagSyntax(stripMarkdownImageSyntax(memo.content)), [memo.content]);
+  const renderMarkdown = useMemo(() => shouldRenderMarkdown(contentText), [contentText]);
   const isLong = contentText.length > 200;
-  const wordCount = countWords(memo.content);
+  const wordCount = useMemo(() => countWords(memo.content), [memo.content]);
 
   useEffect(() => {
     if (lightboxIndex === null) return;
@@ -600,27 +601,31 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdi
       </div>
       <div style={isLong && !expanded ? { ...styles.content, color: c.textSecondary, maxHeight: collapsedContentMaxHeight, overflow: 'hidden' } : { ...styles.content, color: c.textSecondary }}>
         <VoiceNoteBlock voiceNote={memo.voiceNote} isDark={isDark} />
-        <ReactMarkdown
-          rehypePlugins={[rehypeRaw]}
-          components={{
-            p: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{children}</p>,
-            ul: ({ children }) => <ul style={{ margin: '0 0 8px', paddingLeft: 20 }}>{children}</ul>,
-            ol: ({ children }) => <ol style={{ margin: '0 0 8px', paddingLeft: 20 }}>{children}</ol>,
-            li: ({ children }) => <li style={{ lineHeight: 1.7 }}>{children}</li>,
-            h1: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
-            h2: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
-            h3: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
-            h4: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
-            h5: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
-            h6: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
-            pre: ({ children }) => <pre style={{ margin: '0 0 8px', padding: 12, background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 6, overflowX: 'auto', whiteSpace: 'pre', fontSize: 13, lineHeight: 1.5 }}>{children}</pre>,
-            code: ({ children, className }) => className
-              ? <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace', fontSize: 13 }}>{children}</code>
-              : <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace', fontSize: 13, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', padding: '2px 5px', borderRadius: 3 }}>{children}</code>,
-          }}
-        >
-          {contentText}
-        </ReactMarkdown>
+        {renderMarkdown ? (
+          <ReactMarkdown
+            rehypePlugins={[rehypeRaw]}
+            components={{
+              p: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{children}</p>,
+              ul: ({ children }) => <ul style={{ margin: '0 0 8px', paddingLeft: 20 }}>{children}</ul>,
+              ol: ({ children }) => <ol style={{ margin: '0 0 8px', paddingLeft: 20 }}>{children}</ol>,
+              li: ({ children }) => <li style={{ lineHeight: 1.7 }}>{children}</li>,
+              h1: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
+              h2: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
+              h3: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
+              h4: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
+              h5: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
+              h6: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
+              pre: ({ children }) => <pre style={{ margin: '0 0 8px', padding: 12, background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 6, overflowX: 'auto', whiteSpace: 'pre', fontSize: 13, lineHeight: 1.5 }}>{children}</pre>,
+              code: ({ children, className }) => className
+                ? <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace', fontSize: 13 }}>{children}</code>
+                : <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace', fontSize: 13, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', padding: '2px 5px', borderRadius: 3 }}>{children}</code>,
+            }}
+          >
+            {contentText}
+          </ReactMarkdown>
+        ) : (
+          <p style={{ margin: '0 0 8px', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{contentText}</p>
+        )}
       </div>
       {isLong ? (
         <button
@@ -718,6 +723,8 @@ export const MemoCard = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdi
     </article>
   );
 };
+
+export const MemoCard = memo(MemoCardComponent);
 
 const styles: Record<string, React.CSSProperties> = {
   card: {

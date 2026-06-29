@@ -67,10 +67,17 @@ export interface CreateMemoInput {
   voiceNote?: CreateMemoVoiceNoteInput;
 }
 
-export const fetchPublicMemos = async (tag?: string, date?: string): Promise<PublicMemosResponse> => {
+export interface MemoPaginationOptions {
+  limit?: number;
+  cursor?: string;
+}
+
+export const fetchPublicMemos = async (tag?: string, date?: string, pagination?: MemoPaginationOptions): Promise<PublicMemosResponse> => {
   const params = new URLSearchParams();
   if (tag) params.set('tag', tag);
   if (date) params.set('date', date);
+  if (pagination?.limit) params.set('limit', String(pagination.limit));
+  if (pagination?.cursor) params.set('cursor', pagination.cursor);
   const search = params.toString() ? `?${params.toString()}` : '';
   const response = await fetch(withApiBase(`/api/public/memos${search}`));
 
@@ -150,9 +157,12 @@ export const fetchDashboardTags = async (): Promise<TagListResponse> => {
 export const fetchDashboardMemos = async (
   view: 'all' | 'public' | 'private' | 'trash' | 'favorited',
   date?: string,
-): Promise<{ memos: MemoSummary[] }> => {
+  pagination?: MemoPaginationOptions,
+): Promise<PublicMemosResponse> => {
   const params = new URLSearchParams({ view });
   if (date) params.set('date', date);
+  if (pagination?.limit) params.set('limit', String(pagination.limit));
+  if (pagination?.cursor) params.set('cursor', pagination.cursor);
   const response = await fetch(withApiBase(`/api/dashboard/memos?${params.toString()}`), {
     credentials: 'include',
   });

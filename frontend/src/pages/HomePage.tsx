@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MemoComposer } from '../components/MemoComposer';
 import { DeepChatModal } from '../components/DeepChatModal';
@@ -18,6 +18,7 @@ import { useTheme, colors } from '../lib/theme';
 import type { PublicMemosResponse } from '../types/shared';
 
 const MOBILE_BREAKPOINT = 768;
+const MEMO_PAGE_SIZE = 20;
 
 const useIsMobile = () => {
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT);
@@ -93,15 +94,27 @@ export const HomePage = () => {
   const isAuthor = me?.authenticated && me.role === 'author';
 
   const apiView = activeView === 'private' ? 'private' : activeView === 'trash' ? 'trash' : activeView === 'favorited' ? 'favorited' : 'public';
+  const hasClientFilters = Boolean(activeTag)
+    || filters.hasTags !== undefined
+    || filters.hasImages !== undefined
+    || sortMode !== 'display-desc'
+    || activeView === 'onThisDay'
+    || activeView === 'dailyReview';
+  const useServerPagination = !hasClientFilters && !debouncedSearch && activeView !== 'stats' && activeView !== 'deepChat';
 
-  const { data, isLoading } = useQuery<PublicMemosResponse | { memos: PublicMemosResponse['memos'] }>({
-    queryKey: isAuthor ? ['dashboard-memos', apiView, selectedDate] : ['public-memos', selectedDate],
-    queryFn: () => {
+  const { data, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } = useInfiniteQuery<PublicMemosResponse>({
+    queryKey: isAuthor ? ['dashboard-memos', apiView, selectedDate, useServerPagination] : ['public-memos', selectedDate, useServerPagination],
+    queryFn: ({ pageParam }) => {
+      const pagination = useServerPagination
+        ? { limit: MEMO_PAGE_SIZE, cursor: typeof pageParam === 'string' ? pageParam : undefined }
+        : undefined;
       if (isAuthor) {
-        return fetchDashboardMemos(apiView as 'all' | 'public' | 'private' | 'trash' | 'favorited', selectedDate ?? undefined);
+        return fetchDashboardMemos(apiView as 'all' | 'public' | 'private' | 'trash' | 'favorited', selectedDate ?? undefined, pagination);
       }
-      return fetchPublicMemos(undefined, selectedDate ?? undefined);
+      return fetchPublicMemos(undefined, selectedDate ?? undefined, pagination);
     },
+    initialPageParam: undefined,
+    getNextPageParam: (lastPage) => useServerPagination ? lastPage.nextCursor ?? undefined : undefined,
     enabled: !isLoadingMe,
     placeholderData: (prev) => prev,
   });
@@ -214,7 +227,7 @@ export const HomePage = () => {
   const memos = useMemo(() => {
     if (debouncedSearch) return searchData?.memos ?? [];
     if ((activeView === 'trash' || activeView === 'private' || activeView === 'favorited') && !isAuthor) return [];
-    let all = data?.memos ?? [];
+    let all = data?.pages.flatMap((page) => page.memos) ?? [];
     if (activeView === 'onThisDay') {
       all = all.filter((m) => {
         const md = m.displayDate.slice(5, 10);
@@ -406,6 +419,9 @@ export const HomePage = () => {
                   favoriteMutation.mutate(memo.id);
                 }
               }}
+              hasMore={useServerPagination ? hasNextPage : false}
+              isLoadingMore={isFetchingNextPage}
+              onLoadMore={useServerPagination ? () => { void fetchNextPage(); } : undefined}
             />
           </>
         )}
