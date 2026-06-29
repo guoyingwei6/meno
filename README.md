@@ -52,6 +52,8 @@
 - 适配苹果快捷指令、自动化工具等场景
 - 稳定外部 API：`/api/v1/memos` 支持列表、创建、读取、更新、软删除，`/api/v1/export` 支持完整导出
 - OpenAPI 文档：`/openapi.json` 提供机器可读接口说明，方便 AI 助手、客户端和自动化工具接入
+- 私密分享：作者可为私密 memo 生成 share token 链接，撤销后链接立即失效
+- 设置模型：后端提供站点标题、默认可见性等 settings 存储接口
 - MCP Server：实现 MCP (Model Context Protocol) Streamable HTTP 端点，让 AI 助手可以对笔记进行增删改查
 
 ## 技术栈
@@ -225,6 +227,8 @@ curl -X POST https://your-api.workers.dev/api/mcp \
 
 - 新增 UI primitive 第一批：抽出 `IconButton` 并迁移 TopBar 操作按钮，统一按钮语义、禁用态和可访问标签。
 - 优化首屏加载：`DeepChatModal`、`ImportExportModal`、`AiConfigModal` 改为 lazy import，避免随首页主 bundle 一起加载。
+- 新增 `memo_shares` 和 `app_settings` 数据模型：私密 memo 可生成 share token 链接，settings 支持站点标题和默认可见性。
+- 私密 memo 的卡片分享按钮已接入 share token，公开 memo 仍复制原公开详情页链接。
 - 新增稳定外部 API：`/api/v1/memos` 支持笔记列表、创建、读取、更新和软删除，`/api/v1/export` 支持导出包含回收站在内的 memo 数据。
 - 新增 `/openapi.json` 机器可读 API 文档，并补充 v1 请求校验层，复用现有 `API_TOKEN` 鉴权。
 - 新增 v1 API 测试，覆盖 OpenAPI、鉴权、列表、创建、更新、删除和导出流程。

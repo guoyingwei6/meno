@@ -78,12 +78,28 @@ CREATE TABLE IF NOT EXISTS memo_image_ocr (
   UNIQUE(memo_id, image_url)
 );
 
+CREATE TABLE IF NOT EXISTS memo_shares (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  memo_id INTEGER NOT NULL REFERENCES memos(id) ON DELETE CASCADE,
+  token TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  revoked_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_memos_visibility_deleted_at ON memos (visibility, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_memos_display_date ON memos (display_date);
 CREATE INDEX IF NOT EXISTS idx_memo_tags_tag ON memo_tags (tag);
 CREATE INDEX IF NOT EXISTS idx_memo_voice_notes_memo_id ON memo_voice_notes (memo_id);
 CREATE INDEX IF NOT EXISTS idx_memo_image_ocr_status_retry ON memo_image_ocr (status, next_retry_at, updated_at);
 CREATE INDEX IF NOT EXISTS idx_memo_image_ocr_memo_id ON memo_image_ocr (memo_id);
+CREATE INDEX IF NOT EXISTS idx_memo_shares_token ON memo_shares (token);
+CREATE INDEX IF NOT EXISTS idx_memo_shares_memo_id ON memo_shares (memo_id);
 `;
 
 export const applySchema = (db: D1Database) => {

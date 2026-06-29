@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { deleteTag, getAuthorMemoBySlug, getDashboardStats, getRecordStats, listAuthorDateCounts, listAuthorMemos, listAuthorTagCounts, renameTag, searchAuthorMemos } from '../db/memo-repository';
+import { createMemoShare, revokeMemoShare } from '../db/share-repository';
+import { getAppSettings, updateAppSettings } from '../db/settings-repository';
 import type { WorkerBindings } from '../db/client';
 import { isAuthorSession } from '../lib/auth';
 import { parseTags } from '../lib/tag-parser';
@@ -57,6 +59,15 @@ dashboardRoutes.get('/record-stats', async (c) => {
   return c.json({ ...stats, totalStorageBytes, imageCount });
 });
 
+dashboardRoutes.get('/settings', async (c) => {
+  return c.json({ settings: await getAppSettings(c.env.DB) });
+});
+
+dashboardRoutes.patch('/settings', async (c) => {
+  const body = await c.req.json<Record<string, unknown>>();
+  return c.json({ settings: await updateAppSettings(c.env.DB, body) });
+});
+
 dashboardRoutes.get('/memos/search', async (c) => {
   const q = c.req.query('q')?.trim();
   if (!q) return c.json({ memos: [] });
@@ -70,6 +81,28 @@ dashboardRoutes.get('/memos', async (c) => {
   const fetchLimit = pagination.limit ? pagination.limit + 1 : undefined;
   const memos = await listAuthorMemos(c.env.DB, { view, date, ...pagination, limit: fetchLimit });
   return c.json(buildPagedResponse(memos, pagination.limit, pagination.cursor));
+});
+
+dashboardRoutes.post('/memos/:id/share', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id)) return c.json({ message: 'Invalid memo id' }, 400);
+
+  const share = await createMemoShare(c.env.DB, id);
+  if (!share) return c.json({ message: 'Memo not found' }, 404);
+
+  return c.json({
+    share: {
+      ...share,
+      url: `${c.env.APP_ORIGIN}/share/${share.token}`,
+    },
+  });
+});
+
+dashboardRoutes.delete('/memos/:id/share', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id)) return c.json({ message: 'Invalid memo id' }, 400);
+  await revokeMemoShare(c.env.DB, id);
+  return c.json({ success: true });
 });
 
 dashboardRoutes.get('/tags', async (c) => {

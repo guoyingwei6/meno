@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { getPublicStats, getRecordStats, listPublicDateCounts, getPublicMemoBySlug, listPublicMemos, listPublicTagCounts, searchPublicMemos } from '../db/memo-repository';
+import { getSharedMemoByToken } from '../db/share-repository';
 import type { WorkerBindings } from '../db/client';
 
 export const publicRoutes = new Hono<{ Bindings: WorkerBindings }>();
@@ -39,6 +40,15 @@ publicRoutes.get('/memos/search', async (c) => {
   const q = c.req.query('q')?.trim();
   if (!q) return c.json({ memos: [] });
   return c.json({ memos: await searchPublicMemos(c.env.DB, q) });
+});
+
+publicRoutes.get('/shares/:token', async (c) => {
+  const token = c.req.param('token');
+  const memo = await getSharedMemoByToken(c.env.DB, token);
+  if (!memo) {
+    return c.json({ message: 'Share not found' }, 404);
+  }
+  return c.json({ memo });
 });
 
 publicRoutes.get('/memos/:slug', async (c) => {

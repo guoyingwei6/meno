@@ -174,6 +174,15 @@ export const fetchDashboardMemos = async (
   return response.json();
 };
 
+export const createMemoShare = async (id: number): Promise<{ share: { token: string; url: string } }> => {
+  const response = await fetch(withApiBase(`/api/dashboard/memos/${id}/share`), {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to create memo share');
+  return response.json();
+};
+
 export const fetchPublicStats = async (): Promise<PublicStatsResponse> => {
   const response = await fetch(withApiBase('/api/public/stats'));
 

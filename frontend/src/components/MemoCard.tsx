@@ -3,7 +3,7 @@ import rehypeRaw from 'rehype-raw';
 import { createPortal } from 'react-dom';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { getCaretCoords, getRecentTags, recordRecentTag } from '../lib/caret';
-import { uploadFile } from '../lib/api';
+import { createMemoShare, uploadFile } from '../lib/api';
 import { extractMarkdownImageUrls, shouldRenderMarkdown, stripMarkdownImageSyntax, stripTagSyntax } from '../lib/content';
 import { SortableImagePreviewList } from './SortableImagePreviewList';
 import type { MemoSummary } from '../types/shared';
@@ -143,11 +143,17 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
     setTimeout(() => setToastMsg(null), 2000);
   };
 
-  const handleShare = () => {
-    const url = `${window.location.origin}/memos/${memo.slug}`;
-    navigator.clipboard.writeText(url);
+  const handleShare = async () => {
     setMenuOpen(false);
-    showToast('链接已复制');
+    try {
+      const url = isAuthor && memo.visibility === 'private'
+        ? (await createMemoShare(memo.id)).share.url
+        : `${window.location.origin}/memos/${memo.slug}`;
+      await navigator.clipboard.writeText(url);
+      showToast('链接已复制');
+    } catch (error) {
+      showToast(`分享失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
   };
 
   const handleFillTags = async () => {
