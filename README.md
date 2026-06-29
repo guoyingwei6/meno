@@ -150,7 +150,7 @@ npm run deploy:worker
 
 仓库包含 `.github/workflows/deploy.yml`。推送到 `main` 后会自动：
 
-1. 安装依赖并执行 `npm run verify`。
+1. 安装依赖并执行类型检查与测试。
 2. 生成临时 `worker/wrangler.ci.toml`。
 3. 执行 D1 migrations。
 4. 同步 Worker secrets。
@@ -253,6 +253,7 @@ curl -X POST https://your-api.workers.dev/api/mcp \
 
 - 新增 GitHub Actions 自动部署：push 到 `main` 后自动验证、执行 D1 migrations、同步 Worker secrets、部署 Worker 和 Cloudflare Pages。
 - 修正 GitHub Actions 自动部署配置命名：仓库 secrets/variables 使用 `OAUTH_*`，避开 GitHub 保留的 `GITHUB_*` 前缀限制，生成 Worker 配置时仍写回应用需要的 `GITHUB_*` 名称。
+- 修正 GitHub Actions 验证流程：CI 环境不再依赖本地-only 的 `worker/wrangler.local.toml`，改为运行类型检查和测试，部署时生成临时 `worker/wrangler.ci.toml`。
 - 新增 CI 专用 Wrangler 配置生成脚本和 D1 migration 执行脚本，避免把真实 Cloudflare 配置写入仓库。
 - 新增 UI primitive 第一批：抽出 `IconButton` 并迁移 TopBar 操作按钮，统一按钮语义、禁用态和可访问标签。
 - 优化首屏加载：`DeepChatModal`、`ImportExportModal`、`AiConfigModal` 改为 lazy import，避免随首页主 bundle 一起加载。
