@@ -9,6 +9,35 @@ npm run deploy:dry-run
 npm run deploy
 ```
 
+## 自动部署
+
+仓库包含 `.github/workflows/deploy.yml`，推送到 `main` 后由 GitHub Actions 自动部署生产环境。
+
+自动部署流程：
+
+1. `npm ci`
+2. `npm run verify`
+3. 生成临时 `worker/wrangler.ci.toml`
+4. 执行 `worker/migrations/*.sql`
+5. 同步 Worker secrets
+6. 部署 Worker
+7. 构建并部署 Cloudflare Pages
+
+GitHub Secrets：
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `D1_DATABASE_ID`
+- `GITHUB_CLIENT_SECRET`
+- `SESSION_SECRET`
+- `API_TOKEN`
+
+GitHub Variables：
+
+- `GITHUB_ALLOWED_LOGIN`
+- `GITHUB_CLIENT_ID`
+- 可选：`APP_ORIGIN`、`API_ORIGIN`、`ASSET_PUBLIC_BASE_URL`、`OCR_DAILY_LIMIT`、`OCR_BATCH_SIZE`、`OCR_SEED_BATCH_SIZE`
+
 ## 命令说明
 
 | 命令 | 作用 |
@@ -35,6 +64,7 @@ npm run deploy
 
 - `worker/wrangler.toml` 是提交到仓库的模板，保留占位符。
 - `worker/wrangler.local.toml` 是本地真实部署配置，不提交到 Git。
+- `worker/wrangler.ci.toml` 是 GitHub Actions 临时生成配置，不提交到 Git。
 - Worker dry-run 和正式部署都必须显式使用 `--config wrangler.local.toml`。
 
 ## 安全约定

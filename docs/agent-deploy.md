@@ -6,9 +6,24 @@
 
 - Worker 部署必须使用 `worker/wrangler.local.toml`。
 - 不要用 `worker/wrangler.toml` 部署；它是提交到仓库的占位模板。
+- GitHub Actions 自动部署使用临时生成的 `worker/wrangler.ci.toml`。
 - 不要在日志、提交信息、README 或聊天总结里输出 secret、token、OAuth secret、API token。
 - 正式部署前先跑 `npm run verify`。
 - 不确定 Cloudflare 登录状态时，先让用户确认是否可以执行需要网络和认证的 Wrangler 命令。
+
+## 自动部署
+
+push 到 `main` 会触发 `.github/workflows/deploy.yml`：
+
+1. 安装依赖。
+2. 运行 `npm run verify`。
+3. 生成 CI Wrangler 配置。
+4. 执行 D1 migrations。
+5. 同步 Worker secrets。
+6. 部署 Worker。
+7. 部署 Cloudflare Pages 前端。
+
+若 workflow 失败，优先检查 GitHub Secrets / Variables 是否齐全。不要把缺失的 secret 直接写入仓库文件。
 
 ## 标准顺序
 

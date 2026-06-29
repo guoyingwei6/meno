@@ -7,4 +7,5 @@ coverage/
 .wrangler/
 .dev.vars
 wrangler.local.toml
+wrangler.ci.toml
 .omx/

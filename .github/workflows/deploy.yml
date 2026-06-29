@@ -1,0 +1,92 @@
+name: Deploy Meno
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-meno-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CI: "1"
+      WRANGLER_SEND_METRICS: "false"
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+      GITHUB_CLIENT_SECRET: ${{ secrets.GITHUB_CLIENT_SECRET }}
+      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      API_TOKEN: ${{ secrets.API_TOKEN }}
+      APP_ORIGIN: ${{ vars.APP_ORIGIN || 'https://meno.guoyingwei.top' }}
+      API_ORIGIN: ${{ vars.API_ORIGIN || 'https://api.meno.guoyingwei.top' }}
+      ASSET_PUBLIC_BASE_URL: ${{ vars.ASSET_PUBLIC_BASE_URL || 'https://api.meno.guoyingwei.top/api/assets' }}
+      OCR_DAILY_LIMIT: ${{ vars.OCR_DAILY_LIMIT || '100' }}
+      OCR_BATCH_SIZE: ${{ vars.OCR_BATCH_SIZE || '10' }}
+      OCR_SEED_BATCH_SIZE: ${{ vars.OCR_SEED_BATCH_SIZE || '10' }}
+      GITHUB_ALLOWED_LOGIN: ${{ vars.GITHUB_ALLOWED_LOGIN }}
+      GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate deployment secrets
+        run: |
+          required=(
+            CLOUDFLARE_API_TOKEN
+            CLOUDFLARE_ACCOUNT_ID
+            D1_DATABASE_ID
+            GITHUB_CLIENT_SECRET
+            SESSION_SECRET
+            API_TOKEN
+            GITHUB_ALLOWED_LOGIN
+            GITHUB_CLIENT_ID
+          )
+          for name in "${required[@]}"; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required GitHub secret or variable: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Verify
+        run: npm run verify
+
+      - name: Write CI Wrangler config
+        run: node scripts/write-ci-wrangler-config.mjs
+
+      - name: Apply D1 migrations
+        run: node scripts/apply-d1-migrations.mjs --config=worker/wrangler.ci.toml --database=meno
+
+      - name: Build Worker
+        run: npm run build --workspace worker
+
+      - name: Sync Worker secrets
+        run: |
+          printf "%s" "$GITHUB_CLIENT_SECRET" | ./node_modules/.bin/wrangler secret put GITHUB_CLIENT_SECRET --config worker/wrangler.ci.toml
+          printf "%s" "$SESSION_SECRET" | ./node_modules/.bin/wrangler secret put SESSION_SECRET --config worker/wrangler.ci.toml
+          printf "%s" "$API_TOKEN" | ./node_modules/.bin/wrangler secret put API_TOKEN --config worker/wrangler.ci.toml
+
+      - name: Deploy Worker
+        run: ./node_modules/.bin/wrangler deploy --config worker/wrangler.ci.toml
+
+      - name: Build Frontend
+        run: npm run build --workspace frontend
+
+      - name: Deploy Cloudflare Pages
+        run: ./node_modules/.bin/wrangler pages deploy frontend/dist --project-name=meno --branch=main --commit-dirty=true

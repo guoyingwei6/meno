@@ -146,6 +146,32 @@ npm run deploy:worker
 - `GITHUB_CLIENT_SECRET`、`SESSION_SECRET`、`API_TOKEN` 等 secret 类配置应使用 Wrangler secrets；部署前严格检查会阻止它们留在 `[vars]` 中。
 - Agent 部署流程参考 `docs/agent-deploy.md`，人工部署流程参考 `docs/deploy-runbook.md`。
 
+### GitHub Actions 自动部署
+
+仓库包含 `.github/workflows/deploy.yml`。推送到 `main` 后会自动：
+
+1. 安装依赖并执行 `npm run verify`。
+2. 生成临时 `worker/wrangler.ci.toml`。
+3. 执行 D1 migrations。
+4. 同步 Worker secrets。
+5. 部署 Cloudflare Worker。
+6. 构建并部署 Cloudflare Pages 前端。
+
+需要在 GitHub 仓库配置以下 Secrets：
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `D1_DATABASE_ID`
+- `GITHUB_CLIENT_SECRET`
+- `SESSION_SECRET`
+- `API_TOKEN`
+
+需要配置以下 Variables：
+
+- `GITHUB_ALLOWED_LOGIN`
+- `GITHUB_CLIENT_ID`
+- 可选：`APP_ORIGIN`、`API_ORIGIN`、`ASSET_PUBLIC_BASE_URL`、`OCR_DAILY_LIMIT`、`OCR_BATCH_SIZE`、`OCR_SEED_BATCH_SIZE`
+
 ## 知识库启用
 
 1. 在 `worker/wrangler.local.toml` 中补上 `[ai] binding = "AI"` 和 `[[vectorize]] binding = "VECTORIZE"`。
@@ -225,6 +251,8 @@ curl -X POST https://your-api.workers.dev/api/mcp \
 
 ### 2026-06-29
 
+- 新增 GitHub Actions 自动部署：push 到 `main` 后自动验证、执行 D1 migrations、同步 Worker secrets、部署 Worker 和 Cloudflare Pages。
+- 新增 CI 专用 Wrangler 配置生成脚本和 D1 migration 执行脚本，避免把真实 Cloudflare 配置写入仓库。
 - 新增 UI primitive 第一批：抽出 `IconButton` 并迁移 TopBar 操作按钮，统一按钮语义、禁用态和可访问标签。
 - 优化首屏加载：`DeepChatModal`、`ImportExportModal`、`AiConfigModal` 改为 lazy import，避免随首页主 bundle 一起加载。
 - 新增 `memo_shares` 和 `app_settings` 数据模型：私密 memo 可生成 share token 链接，settings 支持站点标题和默认可见性。
