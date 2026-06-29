@@ -10,6 +10,13 @@
   "scripts": {
     "build": "npm run build --workspace frontend && npm run build --workspace worker",
     "test": "npm run test --workspace frontend && npm run test --workspace worker",
-    "typecheck": "npm run typecheck --workspace frontend && npm run typecheck --workspace worker"
+    "typecheck": "npm run typecheck --workspace frontend && npm run typecheck --workspace worker",
+    "config:check": "node scripts/check-config.mjs",
+    "config:check:deploy": "node scripts/check-config.mjs --deploy",
+    "verify": "node scripts/preflight.mjs",
+    "deploy:dry-run": "npm run config:check:deploy && npm run build --workspace frontend && npm run build --workspace worker",
+    "deploy:frontend": "npm run build --workspace frontend && cd frontend && npx wrangler pages deploy dist --project-name=meno",
+    "deploy:worker": "npm run config:check:deploy && npm run build --workspace worker && cd worker && npx wrangler deploy --config wrangler.local.toml",
+    "deploy": "npm run verify && npm run deploy:frontend && npm run deploy:worker"
   }
 }
