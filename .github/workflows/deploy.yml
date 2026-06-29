@@ -74,7 +74,7 @@ jobs:
         run: node scripts/apply-d1-migrations.mjs --config=worker/wrangler.ci.toml --database=meno
 
       - name: Build Worker
-        run: npm run build --workspace worker
+        run: ./node_modules/.bin/wrangler deploy --config worker/wrangler.ci.toml --dry-run
 
       - name: Sync Worker secrets
         run: |
