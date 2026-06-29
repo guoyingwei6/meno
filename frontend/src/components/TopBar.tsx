@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTheme, colors, type ThemeMode } from '../lib/theme';
+import { IconButton } from './ui/IconButton';
 
 interface TopBarProps {
   authenticated: boolean;
@@ -18,9 +19,9 @@ const ThemeToggle = () => {
   const next: Record<ThemeMode, ThemeMode> = { light: 'dark', dark: 'auto', auto: 'light' };
   const icons: Record<ThemeMode, string> = { light: '☀️', dark: '🌙', auto: '🖥' };
   return (
-    <button type="button" style={styles.iconButton} onClick={() => setMode(next[mode])} aria-label={`主题: ${mode}`} title={`当前: ${mode === 'auto' ? '跟随系统' : mode === 'light' ? '浅色' : '深色'}`}>
+    <IconButton label={`主题: ${mode}`} title={`当前: ${mode === 'auto' ? '跟随系统' : mode === 'light' ? '浅色' : '深色'}`} onClick={() => setMode(next[mode])}>
       <span style={{ fontSize: 16 }}>{icons[mode]}</span>
-    </button>
+    </IconButton>
   );
 };
 
@@ -41,38 +42,38 @@ export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, 
   return (
     <header style={styles.header}>
       <div style={styles.leftActions}>
-        <button type="button" style={styles.iconButton} onClick={onToggleSidebar} aria-label="切换侧边栏" title="折叠 / 展开侧边栏">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c.textTertiary} strokeWidth="2">
+        <IconButton label="切换侧边栏" title="折叠 / 展开侧边栏" onClick={onToggleSidebar}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="3" y1="6" x2="21" y2="6" />
             <line x1="3" y1="12" x2="21" y2="12" />
             <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
-        </button>
-        <button type="button" style={styles.iconButton} onClick={handleRefresh} aria-label="刷新" title="刷新">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={spinning ? c.accent : c.textTertiary} strokeWidth="2" style={{ transition: 'transform 0.6s ease', transform: spinning ? 'rotate(360deg)' : 'rotate(0deg)' }}>
+        </IconButton>
+        <IconButton label="刷新" active={spinning} onClick={handleRefresh}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transition: 'transform 0.6s ease', transform: spinning ? 'rotate(360deg)' : 'rotate(0deg)' }}>
             <path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
           </svg>
-        </button>
+        </IconButton>
         <ThemeToggle />
         {authenticated && (
-          <button type="button" style={styles.iconButton} onClick={onImportExport} aria-label="导入/导出" title="导入 / 导出">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c.textTertiary} strokeWidth="2">
+          <IconButton label="导入/导出" title="导入 / 导出" onClick={onImportExport}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-          </button>
+          </IconButton>
         )}
         {authenticated && (
-          <button type="button" style={styles.iconButton} onClick={onAiConfig} aria-label="AI 配置" title="AI 配置">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c.textTertiary} strokeWidth="2">
+          <IconButton label="AI 配置" onClick={onAiConfig}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72" />
               <path d="m14 7 3 3" />
               <path d="M5 6v4" /><path d="M19 14v4" />
               <path d="M10 2v2" /><path d="M7 8H3" />
               <path d="M21 16h-4" /><path d="M11 3H9" />
             </svg>
-          </button>
+          </IconButton>
         )}
       </div>
       <div style={styles.actions}>
@@ -103,7 +104,6 @@ export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, 
 const styles: Record<string, React.CSSProperties> = {
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 16 },
   leftActions: { display: 'flex', alignItems: 'center', gap: 4 },
-  iconButton: { border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6 },
   actions: { display: 'flex', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'flex-end' },
   searchWrap: { display: 'flex', alignItems: 'center', gap: 6, border: '1px solid', borderRadius: 8, padding: '5px 10px', maxWidth: 240, flex: 1 },
   searchInput: { border: 'none', outline: 'none', background: 'transparent', fontSize: 13, width: '100%', lineHeight: 1.4 },

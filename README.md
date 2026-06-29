@@ -223,6 +223,8 @@ curl -X POST https://your-api.workers.dev/api/mcp \
 
 ### 2026-06-29
 
+- 新增 UI primitive 第一批：抽出 `IconButton` 并迁移 TopBar 操作按钮，统一按钮语义、禁用态和可访问标签。
+- 优化首屏加载：`DeepChatModal`、`ImportExportModal`、`AiConfigModal` 改为 lazy import，避免随首页主 bundle 一起加载。
 - 新增稳定外部 API：`/api/v1/memos` 支持笔记列表、创建、读取、更新和软删除，`/api/v1/export` 支持导出包含回收站在内的 memo 数据。
 - 新增 `/openapi.json` 机器可读 API 文档，并补充 v1 请求校验层，复用现有 `API_TOKEN` 鉴权。
 - 新增 v1 API 测试，覆盖 OpenAPI、鉴权、列表、创建、更新、删除和导出流程。

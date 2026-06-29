@@ -1,15 +1,12 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { MemoComposer } from '../components/MemoComposer';
-import { DeepChatModal } from '../components/DeepChatModal';
 import { MemoTimeline } from '../components/MemoTimeline';
 import { SidebarShell } from '../components/SidebarShell';
 import { TimelineHeader } from '../components/TimelineHeader';
 import type { SortMode } from '../components/TimelineHeader';
 import { TopBar } from '../components/TopBar';
 import { StatsView } from '../components/StatsView';
-import { AiConfigModal } from '../components/AiConfigModal';
-import { ImportExportModal } from '../components/ImportExportModal';
 import { createMemo, deleteMemo, deleteTag as deleteTagApi, favoriteMemo as favoriteMemoApi, fetchDashboardCalendar, fetchDashboardMemos, fetchDashboardStats, fetchDashboardTags, fetchMe, fetchPublicCalendar, fetchPublicMemos, fetchPublicStats, fetchPublicTags, logout, pinMemo as pinMemoApi, renameTag as renameTagApi, restoreMemo, searchDashboardMemos, searchPublicMemos, unfavoriteMemo as unfavoriteMemoApi, unpinMemo as unpinMemoApi, updateMemo } from '../lib/api';
 import type { CalendarResponse, DashboardStatsResponse, MeResponse, PublicStatsResponse } from '../lib/api';
 import { buildTagTree } from '../lib/tag-tree';
@@ -19,6 +16,9 @@ import type { PublicMemosResponse } from '../types/shared';
 
 const MOBILE_BREAKPOINT = 768;
 const MEMO_PAGE_SIZE = 20;
+const DeepChatModal = lazy(() => import('../components/DeepChatModal').then((module) => ({ default: module.DeepChatModal })));
+const AiConfigModal = lazy(() => import('../components/AiConfigModal').then((module) => ({ default: module.AiConfigModal })));
+const ImportExportModal = lazy(() => import('../components/ImportExportModal').then((module) => ({ default: module.ImportExportModal })));
 
 const useIsMobile = () => {
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT);
@@ -296,17 +296,21 @@ export const HomePage = () => {
   return (
     <div style={pageStyle}>
       {showImportExport && (
-        <ImportExportModal
-          onClose={() => setShowImportExport(false)}
-          onImportDone={async () => {
-            await queryClient.invalidateQueries({ queryKey: ['dashboard-memos'] });
-            await queryClient.invalidateQueries({ queryKey: ['dashboard-tags'] });
-            await queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
-          }}
-        />
+        <Suspense fallback={null}>
+          <ImportExportModal
+            onClose={() => setShowImportExport(false)}
+            onImportDone={async () => {
+              await queryClient.invalidateQueries({ queryKey: ['dashboard-memos'] });
+              await queryClient.invalidateQueries({ queryKey: ['dashboard-tags'] });
+              await queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+            }}
+          />
+        </Suspense>
       )}
       {showAiConfig && (
-        <AiConfigModal onClose={() => setShowAiConfig(false)} />
+        <Suspense fallback={null}>
+          <AiConfigModal onClose={() => setShowAiConfig(false)} />
+        </Suspense>
       )}
       {isMobile && sidebarOpen && (
         <div style={{ ...styles.overlay, background: c.overlay }} onClick={() => setSidebarOpen(false)} />
@@ -364,7 +368,9 @@ export const HomePage = () => {
         {activeView === 'stats' ? (
           <StatsView isAuthor={Boolean(isAuthor)} />
         ) : activeView === 'deepChat' ? (
-          <DeepChatModal embedded onOpenAiConfig={() => setShowAiConfig(true)} />
+          <Suspense fallback={<div style={styles.loadingPanel}>Loading...</div>}>
+            <DeepChatModal embedded onOpenAiConfig={() => setShowAiConfig(true)} />
+          </Suspense>
         ) : (
           <>
             {isAuthor ? <MemoComposer defaultDisplayDate={todayStr} existingTags={allTags} onSubmit={async (input) => {
@@ -499,6 +505,12 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'grid',
     placeItems: 'center',
     fontSize: 16,
+    color: '#999',
+  },
+  loadingPanel: {
+    padding: '24px 0',
+    textAlign: 'center',
+    fontSize: 14,
     color: '#999',
   },
 };
