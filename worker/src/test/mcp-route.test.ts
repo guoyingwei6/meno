@@ -3,6 +3,22 @@ import type { MemoDetail } from '../../../shared/src/types';
 import { app } from '../index';
 import { createTestEnv } from './route-test-helpers';
 
+type McpResponseBody = {
+  result: {
+    serverInfo: { name: string };
+    protocolVersion: string;
+    capabilities: { tools: unknown };
+    tools: Array<{ name: string }>;
+    content: Array<{ text: string }>;
+    isError?: boolean;
+  };
+  error: {
+    code: number;
+  };
+};
+
+const readMcpBody = async (response: Response) => response.json() as Promise<McpResponseBody>;
+
 const testEnv = (env: Awaited<ReturnType<typeof createTestEnv>>) => ({
   ...env,
   API_TOKEN: 'test-api-token',
@@ -42,7 +58,7 @@ describe('MCP endpoint', () => {
     const res = await mcpRequest(env, 'initialize');
     expect(res.status).toBe(200);
     expect(res.headers.get('Mcp-Session-Id')).toBeTruthy();
-    const body = await res.json();
+    const body = await readMcpBody(res);
     expect(body.result.serverInfo.name).toBe('meno-mcp');
     expect(body.result.protocolVersion).toBe('2025-03-26');
     expect(body.result.capabilities.tools).toBeDefined();
@@ -68,7 +84,7 @@ describe('MCP endpoint', () => {
   it('lists available tools', async () => {
     const env = await createTestEnv();
     const res = await mcpRequest(env, 'tools/list');
-    const body = await res.json();
+    const body = await readMcpBody(res);
     const toolNames = body.result.tools.map((t: { name: string }) => t.name);
     expect(toolNames).toEqual(['list_memos', 'get_memo', 'create_memo', 'update_memo', 'delete_memo']);
   });
@@ -79,7 +95,7 @@ describe('MCP endpoint', () => {
       name: 'list_memos',
       arguments: {},
     });
-    const body = await res.json();
+    const body = await readMcpBody(res);
     const memos = JSON.parse(body.result.content[0].text);
     expect(memos.length).toBe(3);
   });
@@ -90,7 +106,7 @@ describe('MCP endpoint', () => {
       name: 'list_memos',
       arguments: { tag: 'cloudflare' },
     });
-    const body = await res.json();
+    const body = await readMcpBody(res);
     const memos = JSON.parse(body.result.content[0].text);
     expect(memos.length).toBe(1);
     expect(memos[0].tags).toContain('cloudflare');
@@ -102,7 +118,7 @@ describe('MCP endpoint', () => {
       name: 'list_memos',
       arguments: { query: 'Private' },
     });
-    const body = await res.json();
+    const body = await readMcpBody(res);
     const memos = JSON.parse(body.result.content[0].text);
     expect(memos.length).toBe(1);
   });
@@ -113,7 +129,7 @@ describe('MCP endpoint', () => {
       name: 'get_memo',
       arguments: { slug: 'public-memo-1' },
     });
-    const body = await res.json();
+    const body = await readMcpBody(res);
     const memo = JSON.parse(body.result.content[0].text);
     expect(memo.slug).toBe('public-memo-1');
     expect(memo.content).toContain('First public memo');
@@ -125,7 +141,7 @@ describe('MCP endpoint', () => {
       name: 'get_memo',
       arguments: { slug: 'nonexistent' },
     });
-    const body = await res.json();
+    const body = await readMcpBody(res);
     expect(body.result.isError).toBe(true);
   });
 
@@ -138,7 +154,7 @@ describe('MCP endpoint', () => {
         visibility: 'private',
       },
     });
-    const body = await res.json();
+    const body = await readMcpBody(res);
     const memo = JSON.parse(body.result.content[0].text) as MemoDetail;
     expect(memo.content).toBe('New MCP memo #test');
     expect(memo.visibility).toBe('private');
@@ -151,7 +167,7 @@ describe('MCP endpoint', () => {
       name: 'list_memos',
       arguments: {},
     });
-    const listBody = await listRes.json();
+    const listBody = await readMcpBody(listRes);
     const memos = JSON.parse(listBody.result.content[0].text);
     const id = memos[0].id;
 
@@ -159,7 +175,7 @@ describe('MCP endpoint', () => {
       name: 'update_memo',
       arguments: { id, content: 'Updated content #updated' },
     });
-    const body = await res.json();
+    const body = await readMcpBody(res);
     const memo = JSON.parse(body.result.content[0].text) as MemoDetail;
     expect(memo.content).toBe('Updated content #updated');
     expect(memo.tags).toContain('updated');
@@ -171,7 +187,7 @@ describe('MCP endpoint', () => {
       name: 'list_memos',
       arguments: {},
     });
-    const listBody = await listRes.json();
+    const listBody = await readMcpBody(listRes);
     const memos = JSON.parse(listBody.result.content[0].text);
     const id = memos[0].id;
 
@@ -179,14 +195,14 @@ describe('MCP endpoint', () => {
       name: 'delete_memo',
       arguments: { id },
     });
-    const body = await res.json();
+    const body = await readMcpBody(res);
     expect(body.result.content[0].text).toContain('moved to trash');
 
     const listRes2 = await mcpRequest(env, 'tools/call', {
       name: 'list_memos',
       arguments: {},
     });
-    const listBody2 = await listRes2.json();
+    const listBody2 = await readMcpBody(listRes2);
     const remaining = JSON.parse(listBody2.result.content[0].text);
     expect(remaining.length).toBe(2);
   });
@@ -197,14 +213,14 @@ describe('MCP endpoint', () => {
       name: 'nonexistent_tool',
       arguments: {},
     });
-    const body = await res.json();
+    const body = await readMcpBody(res);
     expect(body.error.code).toBe(-32602);
   });
 
   it('returns error for unknown method', async () => {
     const env = await createTestEnv();
     const res = await mcpRequest(env, 'tools/list_changed');
-    const body = await res.json();
+    const body = await readMcpBody(res);
     expect(body.error.code).toBe(-32601);
   });
 
@@ -246,7 +262,7 @@ describe('MCP endpoint', () => {
   it('handles ping', async () => {
     const env = await createTestEnv();
     const res = await mcpRequest(env, 'ping');
-    const body = await res.json();
+    const body = await readMcpBody(res);
     expect(body.result).toEqual({});
   });
 });
