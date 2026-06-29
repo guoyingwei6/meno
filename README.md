@@ -162,14 +162,14 @@ npm run deploy:worker
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
 - `D1_DATABASE_ID`
-- `GITHUB_CLIENT_SECRET`
+- `OAUTH_CLIENT_SECRET`（写入 Worker 时会同步为 `GITHUB_CLIENT_SECRET`）
 - `SESSION_SECRET`
 - `API_TOKEN`
 
 需要配置以下 Variables：
 
-- `GITHUB_ALLOWED_LOGIN`
-- `GITHUB_CLIENT_ID`
+- `OAUTH_ALLOWED_LOGIN`（生成 Worker 配置时会写入 `GITHUB_ALLOWED_LOGIN`）
+- `OAUTH_CLIENT_ID`（生成 Worker 配置时会写入 `GITHUB_CLIENT_ID`）
 - 可选：`APP_ORIGIN`、`API_ORIGIN`、`ASSET_PUBLIC_BASE_URL`、`OCR_DAILY_LIMIT`、`OCR_BATCH_SIZE`、`OCR_SEED_BATCH_SIZE`
 
 ## 知识库启用
@@ -252,6 +252,7 @@ curl -X POST https://your-api.workers.dev/api/mcp \
 ### 2026-06-29
 
 - 新增 GitHub Actions 自动部署：push 到 `main` 后自动验证、执行 D1 migrations、同步 Worker secrets、部署 Worker 和 Cloudflare Pages。
+- 修正 GitHub Actions 自动部署配置命名：仓库 secrets/variables 使用 `OAUTH_*`，避开 GitHub 保留的 `GITHUB_*` 前缀限制，生成 Worker 配置时仍写回应用需要的 `GITHUB_*` 名称。
 - 新增 CI 专用 Wrangler 配置生成脚本和 D1 migration 执行脚本，避免把真实 Cloudflare 配置写入仓库。
 - 新增 UI primitive 第一批：抽出 `IconButton` 并迁移 TopBar 操作按钮，统一按钮语义、禁用态和可访问标签。
 - 优化首屏加载：`DeepChatModal`、`ImportExportModal`、`AiConfigModal` 改为 lazy import，避免随首页主 bundle 一起加载。

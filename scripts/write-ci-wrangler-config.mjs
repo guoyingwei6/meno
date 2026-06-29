@@ -3,8 +3,8 @@ import { writeFileSync } from 'node:fs';
 const required = [
   'CLOUDFLARE_ACCOUNT_ID',
   'D1_DATABASE_ID',
-  'GITHUB_ALLOWED_LOGIN',
-  'GITHUB_CLIENT_ID',
+  'OAUTH_ALLOWED_LOGIN',
+  'OAUTH_CLIENT_ID',
 ];
 
 const missing = required.filter((name) => !process.env[name]);
@@ -22,8 +22,8 @@ const env = {
   ocrDailyLimit: process.env.OCR_DAILY_LIMIT || '100',
   ocrBatchSize: process.env.OCR_BATCH_SIZE || '10',
   ocrSeedBatchSize: process.env.OCR_SEED_BATCH_SIZE || '10',
-  githubAllowedLogin: process.env.GITHUB_ALLOWED_LOGIN,
-  githubClientId: process.env.GITHUB_CLIENT_ID,
+  githubAllowedLogin: process.env.OAUTH_ALLOWED_LOGIN,
+  githubClientId: process.env.OAUTH_CLIENT_ID,
 };
 
 const quote = (value) => JSON.stringify(String(value));

@@ -21,7 +21,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
-      GITHUB_CLIENT_SECRET: ${{ secrets.GITHUB_CLIENT_SECRET }}
+      OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}
       SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
       API_TOKEN: ${{ secrets.API_TOKEN }}
       APP_ORIGIN: ${{ vars.APP_ORIGIN || 'https://meno.guoyingwei.top' }}
@@ -30,8 +30,8 @@ jobs:
       OCR_DAILY_LIMIT: ${{ vars.OCR_DAILY_LIMIT || '100' }}
       OCR_BATCH_SIZE: ${{ vars.OCR_BATCH_SIZE || '10' }}
       OCR_SEED_BATCH_SIZE: ${{ vars.OCR_SEED_BATCH_SIZE || '10' }}
-      GITHUB_ALLOWED_LOGIN: ${{ vars.GITHUB_ALLOWED_LOGIN }}
-      GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
+      OAUTH_ALLOWED_LOGIN: ${{ vars.OAUTH_ALLOWED_LOGIN }}
+      OAUTH_CLIENT_ID: ${{ vars.OAUTH_CLIENT_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,11 +51,11 @@ jobs:
             CLOUDFLARE_API_TOKEN
             CLOUDFLARE_ACCOUNT_ID
             D1_DATABASE_ID
-            GITHUB_CLIENT_SECRET
+            OAUTH_CLIENT_SECRET
             SESSION_SECRET
             API_TOKEN
-            GITHUB_ALLOWED_LOGIN
-            GITHUB_CLIENT_ID
+            OAUTH_ALLOWED_LOGIN
+            OAUTH_CLIENT_ID
           )
           for name in "${required[@]}"; do
             if [ -z "${!name}" ]; then
@@ -78,7 +78,7 @@ jobs:
 
       - name: Sync Worker secrets
         run: |
-          printf "%s" "$GITHUB_CLIENT_SECRET" | ./node_modules/.bin/wrangler secret put GITHUB_CLIENT_SECRET --config worker/wrangler.ci.toml
+          printf "%s" "$OAUTH_CLIENT_SECRET" | ./node_modules/.bin/wrangler secret put GITHUB_CLIENT_SECRET --config worker/wrangler.ci.toml
           printf "%s" "$SESSION_SECRET" | ./node_modules/.bin/wrangler secret put SESSION_SECRET --config worker/wrangler.ci.toml
           printf "%s" "$API_TOKEN" | ./node_modules/.bin/wrangler secret put API_TOKEN --config worker/wrangler.ci.toml
 
