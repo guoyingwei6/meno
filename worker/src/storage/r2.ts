@@ -39,31 +39,36 @@ const parseByteRange = (header: string, size: number) => {
 };
 
 export const getAssetResponse = async (bucket: R2Bucket, objectKey: string, rangeHeader?: string | null) => {
-  const fullObject = await bucket.get(objectKey);
-  if (!fullObject) return null;
+  const metadata = await bucket.head(objectKey);
+  if (!metadata) return null;
 
   const headers = new Headers();
-  fullObject.writeHttpMetadata(headers);
-  headers.set('etag', fullObject.httpEtag);
+  metadata.writeHttpMetadata(headers);
+  headers.set('etag', metadata.httpEtag);
   headers.set('cache-control', 'public, max-age=31536000, immutable');
   headers.set('accept-ranges', 'bytes');
 
   if (!rangeHeader) {
+    const fullObject = await bucket.get(objectKey);
+    if (!fullObject) return null;
     return new Response(fullObject.body, { headers });
   }
 
-  const fullBuffer = await fullObject.arrayBuffer();
-  const range = parseByteRange(rangeHeader, fullBuffer.byteLength);
+  const range = parseByteRange(rangeHeader, metadata.size);
   if (!range) {
-    headers.set('content-range', `bytes */${fullBuffer.byteLength}`);
+    headers.set('content-range', `bytes */${metadata.size}`);
     return new Response(null, { status: 416, headers });
   }
 
-  const chunk = fullBuffer.slice(range.offset, range.offset + range.length);
-  headers.set('content-range', `bytes ${range.offset}-${range.offset + range.length - 1}/${fullBuffer.byteLength}`);
+  const partialObject = await bucket.get(objectKey, { range });
+  if (!partialObject) return null;
+
+  partialObject.writeHttpMetadata(headers);
+  headers.set('etag', partialObject.httpEtag);
+  headers.set('content-range', `bytes ${range.offset}-${range.offset + range.length - 1}/${metadata.size}`);
   headers.set('content-length', String(range.length));
 
-  return new Response(chunk, {
+  return new Response(partialObject.body, {
     status: 206,
     headers,
   });

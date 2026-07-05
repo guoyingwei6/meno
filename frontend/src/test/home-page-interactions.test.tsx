@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomePage } from '../pages/HomePage';
 import type { PublicMemosResponse } from '../types/shared';
@@ -48,7 +48,13 @@ const mockResponse: PublicMemosResponse = {
 
 const assignMock = vi.fn();
 
+const LocationProbe = () => {
+  const location = useLocation();
+  return <div data-testid="location-probe">{location.pathname}</div>;
+};
+
 beforeEach(() => {
+  assignMock.mockReset();
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
@@ -180,6 +186,7 @@ describe('HomePage interactions', () => {
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
           <HomePage />
+          <LocationProbe />
         </MemoryRouter>
       </QueryClientProvider>,
     );
@@ -187,7 +194,10 @@ describe('HomePage interactions', () => {
     const tagPill = await screen.findByRole('button', { name: '#serverless' });
     fireEvent.click(tagPill);
 
-    expect(assignMock).toHaveBeenCalledWith('/tags/serverless');
+    await waitFor(() => {
+      expect(screen.getByTestId('location-probe')).toHaveTextContent('/tags/serverless');
+    });
+    expect(assignMock).not.toHaveBeenCalled();
   });
 
   it('filters memos when a sidebar view is selected', async () => {

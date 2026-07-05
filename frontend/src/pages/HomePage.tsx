@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MemoComposer } from '../components/MemoComposer';
 import { MemoTimeline } from '../components/MemoTimeline';
 import { SidebarShell } from '../components/SidebarShell';
@@ -12,7 +13,7 @@ import type { CalendarResponse, DashboardStatsResponse, MeResponse, PublicStatsR
 import { buildTagTree } from '../lib/tag-tree';
 import type { MemoFilters } from '../components/SidebarShell';
 import { useTheme, colors } from '../lib/theme';
-import type { PublicMemosResponse } from '../types/shared';
+import type { MemoSummary, PublicMemosResponse } from '../types/shared';
 
 const MOBILE_BREAKPOINT = 768;
 const MEMO_PAGE_SIZE = 20;
@@ -32,6 +33,7 @@ const useIsMobile = () => {
 
 export const HomePage = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { isDark } = useTheme();
   const c = colors(isDark);
@@ -220,6 +222,61 @@ export const HomePage = () => {
     },
   });
 
+  const allTags: Array<{ tag: string; count: number }> = useMemo(
+    () => (Array.isArray(tagsData?.tags) ? tagsData.tags : []),
+    [tagsData],
+  );
+  const allTagNames = useMemo(() => allTags.map((tag) => tag.tag), [allTags]);
+  const tagTree = useMemo(() => buildTagTree(allTags), [allTags]);
+
+  const handleOpenMemo = useCallback((memo: MemoSummary) => {
+    navigate(`/memos/${memo.slug}`);
+  }, [navigate]);
+
+  const handleOpenTagMemo = useCallback((tag: string) => {
+    navigate(`/tags/${tag}`);
+  }, [navigate]);
+
+  const handleSaveEditMemo = useCallback((memo: MemoSummary, input: { content: string; visibility: 'public' | 'private'; displayDate: string }) => {
+    updateMemoMutation.mutate({ id: memo.id, input });
+  }, [updateMemoMutation.mutate]);
+
+  const handleRestoreMemo = useCallback((memo: MemoSummary) => {
+    restoreMemoMutation.mutate(memo.id);
+  }, [restoreMemoMutation.mutate]);
+
+  const handleDeleteMemo = useCallback((memo: MemoSummary) => {
+    deleteMemoMutation.mutate(memo.id);
+  }, [deleteMemoMutation.mutate]);
+
+  const handleChangeVisibility = useCallback((memo: MemoSummary, visibility: 'public' | 'private') => {
+    updateMemoMutation.mutate({ id: memo.id, input: { visibility } });
+  }, [updateMemoMutation.mutate]);
+
+  const handleFillTagsMemo = useCallback((id: number, newContent: string) => {
+    updateMemoMutation.mutate({ id, input: { content: newContent } });
+  }, [updateMemoMutation.mutate]);
+
+  const handlePinMemo = useCallback((memo: MemoSummary) => {
+    if (memo.pinnedAt) {
+      unpinMutation.mutate(memo.id);
+    } else {
+      pinMutation.mutate(memo.id);
+    }
+  }, [pinMutation.mutate, unpinMutation.mutate]);
+
+  const handleFavoriteMemo = useCallback((memo: MemoSummary) => {
+    if (memo.favoritedAt) {
+      unfavoriteMutation.mutate(memo.id);
+    } else {
+      favoriteMutation.mutate(memo.id);
+    }
+  }, [favoriteMutation.mutate, unfavoriteMutation.mutate]);
+
+  const handleLoadMore = useCallback(() => {
+    void fetchNextPage();
+  }, [fetchNextPage]);
+
   const now = new Date();
   const todayMonthDay = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const todayYear = now.getFullYear().toString();
@@ -282,8 +339,6 @@ export const HomePage = () => {
     return <div style={styles.loading}>Loading...</div>;
   }
 
-  const allTags: Array<{ tag: string; count: number }> = Array.isArray(tagsData?.tags) ? tagsData.tags : [];
-  const tagTree = buildTagTree(allTags);
   const todayStr = new Date().toISOString().slice(0, 10);
   const hasOnThisDay = (calendarData?.days ?? []).some((d) => d.date.slice(5, 10) === todayMonthDay && d.date.slice(0, 4) !== todayYear);
 
@@ -393,41 +448,19 @@ export const HomePage = () => {
               memos={memos}
               isAuthor={Boolean(isAuthor)}
               isTrash={activeView === 'trash'}
-              allTags={allTags.map((t) => t.tag)}
-              onOpenMemo={(memo) => window.location.assign(`/memos/${memo.slug}`)}
-              onOpenTag={(tag) => window.location.assign(`/tags/${tag}`)}
-              onSaveEditMemo={(memo, input) => {
-                updateMemoMutation.mutate({ id: memo.id, input });
-              }}
-              onRestoreMemo={(memo) => {
-                restoreMemoMutation.mutate(memo.id);
-              }}
-              onDeleteMemo={(memo) => {
-                deleteMemoMutation.mutate(memo.id);
-              }}
-              onChangeVisibility={(memo, visibility) => {
-                updateMemoMutation.mutate({ id: memo.id, input: { visibility } });
-              }}
-              onFillTagsMemo={(id, newContent) => {
-                updateMemoMutation.mutate({ id, input: { content: newContent } });
-              }}
-              onPinMemo={(memo) => {
-                if (memo.pinnedAt) {
-                  unpinMutation.mutate(memo.id);
-                } else {
-                  pinMutation.mutate(memo.id);
-                }
-              }}
-              onFavoriteMemo={(memo) => {
-                if (memo.favoritedAt) {
-                  unfavoriteMutation.mutate(memo.id);
-                } else {
-                  favoriteMutation.mutate(memo.id);
-                }
-              }}
+              allTags={allTagNames}
+              onOpenMemo={handleOpenMemo}
+              onOpenTag={handleOpenTagMemo}
+              onSaveEditMemo={handleSaveEditMemo}
+              onRestoreMemo={handleRestoreMemo}
+              onDeleteMemo={handleDeleteMemo}
+              onChangeVisibility={handleChangeVisibility}
+              onFillTagsMemo={handleFillTagsMemo}
+              onPinMemo={handlePinMemo}
+              onFavoriteMemo={handleFavoriteMemo}
               hasMore={useServerPagination ? hasNextPage : false}
               isLoadingMore={isFetchingNextPage}
-              onLoadMore={useServerPagination ? () => { void fetchNextPage(); } : undefined}
+              onLoadMore={useServerPagination ? handleLoadMore : undefined}
             />
           </>
         )}

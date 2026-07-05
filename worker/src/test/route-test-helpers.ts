@@ -39,6 +39,20 @@ export const createTestEnv = async () => {
     delete: async (key: string) => {
       objects.delete(key);
     },
+    head: async (key: string) => {
+      const value = objects.get(key);
+      if (!value) {
+        return null;
+      }
+
+      return {
+        httpEtag: 'test-etag',
+        size: value.byteLength,
+        writeHttpMetadata: (headers: Headers) => {
+          headers.set('content-type', key.endsWith('.m4a') ? 'audio/mp4' : 'image/png');
+        },
+      } as unknown as R2Object;
+    },
     get: async (key: string, options?: { range?: { offset?: number; length?: number; suffix?: number } }) => {
       const value = objects.get(key);
       if (!value) {
