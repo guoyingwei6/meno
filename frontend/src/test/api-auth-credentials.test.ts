@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createMemo, fetchDashboardMemos, fetchMe, logout } from '../lib/api';
+import { createMemo, fetchDashboardMemos, fetchMe, fetchPublicMemos, logout } from '../lib/api';
 
 describe('API auth credentials', () => {
   it('sends credentials for auth-sensitive requests', async () => {
@@ -69,10 +69,23 @@ describe('API auth credentials', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    await fetchDashboardMemos('public', '2026-03-25', { limit: 20, cursor: '40' });
+    const pagination = {
+      limit: 20,
+      cursor: '40',
+      sort: 'updated-asc' as const,
+      hasImages: false,
+      hasTags: true,
+    };
+    await fetchPublicMemos(undefined, '2026-03-25', pagination);
+    await fetchDashboardMemos('public', '2026-03-25', pagination);
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/dashboard/memos?view=public&date=2026-03-25&limit=20&cursor=40',
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/public/memos?date=2026-03-25&limit=20&cursor=40&sort=updated-asc&has_images=false&has_tags=true',
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/dashboard/memos?view=public&date=2026-03-25&limit=20&cursor=40&sort=updated-asc&has_images=false&has_tags=true',
       expect.objectContaining({ credentials: 'include' }),
     );
   });

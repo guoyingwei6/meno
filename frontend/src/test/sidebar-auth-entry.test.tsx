@@ -15,6 +15,21 @@ beforeEach(() => {
 });
 
 describe('SidebarShell auth entry', () => {
+  it('renders the configured site title instead of a hard-coded brand', () => {
+    render(
+      <SidebarShell
+        siteTitle="我的灵感库"
+        memoCount={1}
+        tagCount={1}
+        streakDays={1}
+        authenticated={false}
+        githubLogin={null}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: '我的灵感库' })).toBeInTheDocument();
+  });
+
   it('shows GitHub login in the sidebar brand row for viewers', () => {
     render(
       <SidebarShell

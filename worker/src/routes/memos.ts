@@ -1,20 +1,30 @@
 import { Hono } from 'hono';
-import { createMemo, favoriteMemo, pinMemo, restoreMemo, trashMemo, unfavoriteMemo, unpinMemo, updateMemo } from '../db/memo-repository';
+import { createMemoWithOutcome, favoriteMemo, normalizeClientId, pinMemo, restoreMemo, trashMemo, unfavoriteMemo, unpinMemo, updateMemo } from '../db/memo-repository';
 import { upsertMemoVoiceNote } from '../db/memo-voice-note-repository';
 import type { WorkerBindings } from '../db/client';
-import { isAuthorSession } from '../lib/auth';
-import { removeMemoFromKnowledgeBase, syncMemoToKnowledgeBase } from '../lib/ai-rag';
+import { resolveAuthorSession } from '../lib/auth';
 import { markMemoImageOcrRemovedByMemo, syncMemoImageOcrTasks } from '../db/memo-image-ocr-repository';
 import { createMemoSlug } from '../lib/slug';
 import { processVoiceNoteByMemoId } from '../lib/voice-transcription';
+import { enqueueMemoKnowledgeSync, scheduleMemoKnowledgeSync } from '../lib/knowledge-sync-queue';
 
 export const memoRoutes = new Hono<{ Bindings: WorkerBindings }>();
 
-const swallowKnowledgeBaseError = async (task: Promise<void>) => {
+const setMemoCacheHeaders = async (c: { header: (name: string, value: string) => void }, next: () => Promise<void>) => {
+  c.header('Cache-Control', 'private, no-store');
+  await next();
+};
+
+// This router is mounted at /api. Do not use a root wildcard here: it would
+// also match /api/assets and leak private memo headers onto public assets.
+memoRoutes.use('/memos', setMemoCacheHeaders);
+memoRoutes.use('/memos/*', setMemoCacheHeaders);
+
+const swallowBackgroundError = async (task: Promise<void>) => {
   try {
     await task;
   } catch (error) {
-    console.error('Knowledge base sync failed', error);
+    console.error('Memo background task failed', error);
   }
 };
 
@@ -26,8 +36,20 @@ const getWaitUntil = (c: { executionCtx?: ExecutionContext }) => {
   }
 };
 
+const scheduleBackground = (c: { executionCtx?: ExecutionContext }, task: Promise<void>) => {
+  const safeTask = swallowBackgroundError(task);
+  const waitUntil = getWaitUntil(c);
+  if (waitUntil) {
+    waitUntil(safeTask);
+  } else {
+    // Local adapters do not provide ExecutionContext. Keep this best-effort
+    // fallback non-blocking while still preventing unhandled rejections.
+    void safeTask;
+  }
+};
+
 memoRoutes.post('/memos', async (c) => {
-  if (!isAuthorSession(c.req.header('Cookie'))) {
+  if (!await resolveAuthorSession(c.env, c.req.header('Cookie'))) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
 
@@ -35,6 +57,8 @@ memoRoutes.post('/memos', async (c) => {
     content: string;
     visibility: 'public' | 'private';
     displayDate: string;
+    client_id?: string;
+    clientId?: string;
     voiceNote?: {
       objectKey: string;
       audioUrl: string;
@@ -45,15 +69,24 @@ memoRoutes.post('/memos', async (c) => {
     };
   }>();
 
-  const memo = await createMemo(c.env.DB, {
+  let clientId: string | undefined;
+  try {
+    clientId = normalizeClientId(body.client_id ?? body.clientId);
+  } catch (error) {
+    return c.json({ message: error instanceof Error ? error.message : 'Invalid client_id' }, 400);
+  }
+
+  const outcome = await createMemoWithOutcome(c.env.DB, {
     slug: createMemoSlug(),
     content: body.content,
     visibility: body.visibility,
     displayDate: body.displayDate,
+    clientId,
   });
+  const memo = outcome.memo;
   let voiceNote = null;
 
-  if (body.voiceNote) {
+  if (body.voiceNote && outcome.created) {
     try {
       voiceNote = await upsertMemoVoiceNote(c.env.DB, {
         memoId: memo.id,
@@ -75,17 +108,20 @@ memoRoutes.post('/memos', async (c) => {
       throw error;
     }
   }
-  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility);
-  await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
+  if (outcome.created) {
+    scheduleBackground(c, syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility));
+  }
+  await enqueueMemoKnowledgeSync(c.env.DB, memo.id);
+  scheduleMemoKnowledgeSync(c.env, memo.id, getWaitUntil(c) ?? undefined);
   if (voiceNote && voiceNote.transcriptStatus === 'pending') {
     getWaitUntil(c)?.(processVoiceNoteByMemoId(c.env, memo.id));
   }
 
-  return c.json({ memo: voiceNote ? { ...memo, voiceNote } : memo }, 201);
+  return c.json({ memo: voiceNote ? { ...memo, voiceNote } : memo }, outcome.created ? 201 : 200);
 });
 
 memoRoutes.patch('/memos/:id', async (c) => {
-  if (!isAuthorSession(c.req.header('Cookie'))) {
+  if (!await resolveAuthorSession(c.env, c.req.header('Cookie'))) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
 
@@ -101,17 +137,18 @@ memoRoutes.patch('/memos/:id', async (c) => {
     return c.json({ message: 'Memo not found' }, 404);
   }
 
-  if (body.content !== undefined) {
-    await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility);
+  if (body.content !== undefined || body.visibility !== undefined) {
+    scheduleBackground(c, syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility));
   }
 
-  await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
+  await enqueueMemoKnowledgeSync(c.env.DB, memo.id);
+  scheduleMemoKnowledgeSync(c.env, memo.id, getWaitUntil(c) ?? undefined);
 
   return c.json({ memo });
 });
 
 memoRoutes.delete('/memos/:id', async (c) => {
-  if (!isAuthorSession(c.req.header('Cookie'))) {
+  if (!await resolveAuthorSession(c.env, c.req.header('Cookie'))) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
 
@@ -121,14 +158,15 @@ memoRoutes.delete('/memos/:id', async (c) => {
     return c.json({ message: 'Memo not found' }, 404);
   }
 
-  await markMemoImageOcrRemovedByMemo(c.env.DB, Number(c.req.param('id')));
-  await swallowKnowledgeBaseError(removeMemoFromKnowledgeBase(c.env, Number(c.req.param('id'))));
+  scheduleBackground(c, markMemoImageOcrRemovedByMemo(c.env.DB, Number(c.req.param('id'))));
+  await enqueueMemoKnowledgeSync(c.env.DB, Number(c.req.param('id')));
+  scheduleMemoKnowledgeSync(c.env, Number(c.req.param('id')), getWaitUntil(c) ?? undefined);
 
   return c.json({ success: true });
 });
 
 memoRoutes.post('/memos/:id/pin', async (c) => {
-  if (!isAuthorSession(c.req.header('Cookie'))) {
+  if (!await resolveAuthorSession(c.env, c.req.header('Cookie'))) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
   const memo = await pinMemo(c.env.DB, Number(c.req.param('id')));
@@ -139,7 +177,7 @@ memoRoutes.post('/memos/:id/pin', async (c) => {
 });
 
 memoRoutes.post('/memos/:id/unpin', async (c) => {
-  if (!isAuthorSession(c.req.header('Cookie'))) {
+  if (!await resolveAuthorSession(c.env, c.req.header('Cookie'))) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
   const memo = await unpinMemo(c.env.DB, Number(c.req.param('id')));
@@ -150,7 +188,7 @@ memoRoutes.post('/memos/:id/unpin', async (c) => {
 });
 
 memoRoutes.post('/memos/:id/favorite', async (c) => {
-  if (!isAuthorSession(c.req.header('Cookie'))) {
+  if (!await resolveAuthorSession(c.env, c.req.header('Cookie'))) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
   const memo = await favoriteMemo(c.env.DB, Number(c.req.param('id')));
@@ -161,7 +199,7 @@ memoRoutes.post('/memos/:id/favorite', async (c) => {
 });
 
 memoRoutes.post('/memos/:id/unfavorite', async (c) => {
-  if (!isAuthorSession(c.req.header('Cookie'))) {
+  if (!await resolveAuthorSession(c.env, c.req.header('Cookie'))) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
   const memo = await unfavoriteMemo(c.env.DB, Number(c.req.param('id')));
@@ -172,7 +210,7 @@ memoRoutes.post('/memos/:id/unfavorite', async (c) => {
 });
 
 memoRoutes.post('/memos/:id/restore', async (c) => {
-  if (!isAuthorSession(c.req.header('Cookie'))) {
+  if (!await resolveAuthorSession(c.env, c.req.header('Cookie'))) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
 
@@ -182,8 +220,9 @@ memoRoutes.post('/memos/:id/restore', async (c) => {
     return c.json({ message: 'Memo not found' }, 404);
   }
 
-  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility);
-  await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
+  scheduleBackground(c, syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility));
+  await enqueueMemoKnowledgeSync(c.env.DB, memo.id);
+  scheduleMemoKnowledgeSync(c.env, memo.id, getWaitUntil(c) ?? undefined);
 
   return c.json({ memo });
 });

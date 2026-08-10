@@ -11,6 +11,7 @@ describe('memo image ocr queue', () => {
       headers: {
         'Content-Type': 'application/json',
         Cookie: 'meno_session=valid-author-session',
+        Origin: 'https://meno.guoyingwei.top',
       },
       body: JSON.stringify({
         content: '带图 memo\n![](https://api.meno.guoyingwei.top/api/assets/uploads/test.png)',

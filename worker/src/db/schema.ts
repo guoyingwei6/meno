@@ -2,6 +2,7 @@ export const schemaSql = `
 CREATE TABLE IF NOT EXISTS memos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   slug TEXT NOT NULL UNIQUE,
+  client_id TEXT,
   content TEXT NOT NULL,
   visibility TEXT NOT NULL,
   display_date TEXT NOT NULL,
@@ -24,6 +25,8 @@ CREATE TABLE IF NOT EXISTS memo_tags (
   UNIQUE(memo_id, tag)
 );
 
+CREATE VIRTUAL TABLE IF NOT EXISTS memos_fts USING fts5(content, slug, memo_id UNINDEXED);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   github_user_id TEXT NOT NULL,
@@ -35,6 +38,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS assets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   memo_id INTEGER NOT NULL,
+  client_id TEXT,
   object_key TEXT NOT NULL,
   original_url TEXT NOT NULL,
   preview_url TEXT,
@@ -78,12 +82,25 @@ CREATE TABLE IF NOT EXISTS memo_image_ocr (
   UNIQUE(memo_id, image_url)
 );
 
+CREATE TABLE IF NOT EXISTS knowledge_sync_queue (
+  memo_id INTEGER PRIMARY KEY,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  revision INTEGER NOT NULL DEFAULT 1,
+  last_error TEXT,
+  next_retry_at TEXT NOT NULL,
+  processing_token TEXT,
+  processing_until TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS memo_shares (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   memo_id INTEGER NOT NULL REFERENCES memos(id) ON DELETE CASCADE,
   token TEXT NOT NULL UNIQUE,
   created_at TEXT NOT NULL,
-  revoked_at TEXT
+  revoked_at TEXT,
+  expires_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -94,10 +111,17 @@ CREATE TABLE IF NOT EXISTS app_settings (
 
 CREATE INDEX IF NOT EXISTS idx_memos_visibility_deleted_at ON memos (visibility, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_memos_display_date ON memos (display_date);
+CREATE INDEX IF NOT EXISTS idx_memos_public_feed ON memos (visibility, deleted_at, (pinned_at IS NULL), pinned_at DESC, display_date DESC, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_memos_author_feed ON memos (deleted_at, (pinned_at IS NULL), pinned_at DESC, display_date DESC, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_memos_favorited_feed ON memos (favorited_at, deleted_at, (pinned_at IS NULL), pinned_at DESC, display_date DESC, created_at DESC, id DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_memos_client_id_unique ON memos (client_id) WHERE client_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_memo_tags_tag ON memo_tags (tag);
+CREATE INDEX IF NOT EXISTS idx_memo_tags_memo_tag ON memo_tags (memo_id, tag);
 CREATE INDEX IF NOT EXISTS idx_memo_voice_notes_memo_id ON memo_voice_notes (memo_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_client_id_unique ON assets (client_id) WHERE client_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_memo_image_ocr_status_retry ON memo_image_ocr (status, next_retry_at, updated_at);
 CREATE INDEX IF NOT EXISTS idx_memo_image_ocr_memo_id ON memo_image_ocr (memo_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_sync_queue_due ON knowledge_sync_queue (next_retry_at, processing_until, updated_at);
 CREATE INDEX IF NOT EXISTS idx_memo_shares_token ON memo_shares (token);
 CREATE INDEX IF NOT EXISTS idx_memo_shares_memo_id ON memo_shares (memo_id);
 `;

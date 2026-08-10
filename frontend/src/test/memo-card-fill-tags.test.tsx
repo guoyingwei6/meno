@@ -31,13 +31,13 @@ describe('MemoCard fill-tags menu item', () => {
   it('shows 填充标签（AI）in menu when isAuthor', () => {
     render(<MemoCard memo={baseMemo} isAuthor allTags={['技术', '学习']} onFillTags={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
-    expect(screen.getByRole('button', { name: '填充标签（AI）' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: '填充标签（AI）' })).toBeInTheDocument();
   });
 
   it('does not show 填充标签（AI）when not author', () => {
     render(<MemoCard memo={baseMemo} allTags={['技术']} />);
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
-    expect(screen.queryByRole('button', { name: '填充标签（AI）' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: '填充标签（AI）' })).toBeNull();
   });
 });
 
@@ -45,10 +45,12 @@ describe('MemoCard fill-tags: no config', () => {
   it('shows toast 请先配置 AI when no config set', async () => {
     render(<MemoCard memo={baseMemo} isAuthor allTags={['技术']} onFillTags={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '填充标签（AI）' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '填充标签（AI）' }));
     await waitFor(() => {
       expect(screen.getByText('请先配置 AI')).toBeInTheDocument();
     });
+    expect(screen.getByRole('status')).toHaveTextContent('请先配置 AI');
+    expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
   });
 
   it('shows toast when allTags is empty', async () => {
@@ -57,7 +59,7 @@ describe('MemoCard fill-tags: no config', () => {
     }));
     render(<MemoCard memo={baseMemo} isAuthor allTags={[]} onFillTags={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '填充标签（AI）' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '填充标签（AI）' }));
     await waitFor(() => {
       expect(screen.getByText('暂无可用标签，请先创建标签')).toBeInTheDocument();
     });
@@ -73,10 +75,10 @@ describe('MemoCard fill-tags: loading state', () => {
 
     render(<MemoCard memo={baseMemo} isAuthor allTags={['技术', '学习']} onFillTags={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '填充标签（AI）' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '填充标签（AI）' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: '分析中...' })).toBeDisabled();
+      expect(screen.getByRole('menuitem', { name: '分析中...' })).toBeDisabled();
     });
   });
 });
@@ -95,13 +97,50 @@ describe('MemoCard fill-tags: AI call success', () => {
 
     render(<MemoCard memo={baseMemo} isAuthor allTags={['技术', '学习', '工作']} onFillTags={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '填充标签（AI）' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '填充标签（AI）' }));
 
     await waitFor(() => {
       expect(screen.getByText('AI 建议添加以下标签')).toBeInTheDocument();
     });
+    const dialog = screen.getByRole('dialog', { name: 'AI 建议添加以下标签' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByRole('button', { name: '关闭 AI 标签建议' })).toBeInTheDocument();
     expect(screen.getByLabelText('#技术')).toBeInTheDocument();
     expect(screen.getByLabelText('#学习')).toBeInTheDocument();
+  });
+
+  it('traps dialog focus and restores the menu trigger after Escape', async () => {
+    localStorage.setItem('meno_ai_config', JSON.stringify({
+      url: 'https://api.openai.com/v1', apiKey: 'sk-test', model: 'gpt-4o-mini',
+    }));
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        choices: [{ message: { content: '["技术"]' } }],
+      }),
+    } as Response);
+
+    render(<MemoCard memo={baseMemo} isAuthor allTags={['技术']} onFillTags={vi.fn()} />);
+    const menuTrigger = screen.getByRole('button', { name: '更多操作' });
+    fireEvent.click(menuTrigger);
+    fireEvent.click(screen.getByRole('menuitem', { name: '填充标签（AI）' }));
+
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'AI 建议添加以下标签' })).toBeInTheDocument());
+    const closeButton = screen.getByRole('button', { name: '关闭 AI 标签建议' });
+    const applyButton = screen.getByRole('button', { name: '应用' });
+    expect(closeButton).toHaveFocus();
+
+    fireEvent.focus(applyButton);
+    fireEvent.keyDown(applyButton, { key: 'Tab' });
+    expect(closeButton).toHaveFocus();
+
+    fireEvent.focus(closeButton);
+    fireEvent.keyDown(closeButton, { key: 'Tab', shiftKey: true });
+    expect(applyButton).toHaveFocus();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'AI 建议添加以下标签' })).toBeNull();
+    expect(menuTrigger).toHaveFocus();
   });
 
   it('calls onFillTags with tags prepended to content when 应用 clicked', async () => {
@@ -118,7 +157,7 @@ describe('MemoCard fill-tags: AI call success', () => {
     const onFillTags = vi.fn();
     render(<MemoCard memo={baseMemo} isAuthor allTags={['技术', '学习']} onFillTags={onFillTags} />);
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '填充标签（AI）' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '填充标签（AI）' }));
 
     await waitFor(() => screen.getByText('AI 建议添加以下标签'));
     fireEvent.click(screen.getByRole('button', { name: '应用' }));
@@ -140,7 +179,7 @@ describe('MemoCard fill-tags: AI call success', () => {
 
     render(<MemoCard memo={memoWithTag} isAuthor allTags={['技术']} onFillTags={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '填充标签（AI）' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '填充标签（AI）' }));
 
     await waitFor(() => {
       expect(screen.getByText('未找到新的匹配标签')).toBeInTheDocument();
@@ -160,7 +199,7 @@ describe('MemoCard fill-tags: AI call success', () => {
 
     render(<MemoCard memo={baseMemo} isAuthor allTags={['技术']} onFillTags={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '填充标签（AI）' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '填充标签（AI）' }));
 
     await waitFor(() => {
       expect(screen.getByText('未找到新的匹配标签')).toBeInTheDocument();
@@ -177,7 +216,7 @@ describe('MemoCard fill-tags: AI call failure', () => {
 
     render(<MemoCard memo={baseMemo} isAuthor allTags={['技术']} onFillTags={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '填充标签（AI）' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '填充标签（AI）' }));
 
     await waitFor(() => {
       expect(screen.getByText('AI 调用失败: Network error')).toBeInTheDocument();

@@ -29,7 +29,38 @@ describe('MemoCard image previews', () => {
 
     const images = screen.getAllByRole('img');
     expect(images).toHaveLength(2);
-    expect(images[0]).toHaveAttribute('src', 'https://cdn.example.com/cdn-cgi/image/width=720,quality=75,format=auto/https://cdn.example.com/uploads/a.png');
-    expect(images[1]).toHaveAttribute('src', 'https://cdn.example.com/cdn-cgi/image/width=720,quality=75,format=auto/https://cdn.example.com/uploads/b.png');
+    expect(images[0]).toHaveAttribute('src', 'https://cdn.example.com/cdn-cgi/image/width=64,quality=75,format=auto/https://cdn.example.com/uploads/a.png');
+    expect(images[1]).toHaveAttribute('src', 'https://cdn.example.com/cdn-cgi/image/width=64,quality=75,format=auto/https://cdn.example.com/uploads/b.png');
+  });
+
+  it('keeps private asset previews on the authenticated asset URL', () => {
+    render(
+      <MemoCard
+        memo={{
+          id: 2,
+          slug: 'private-image-card',
+          content: '![](https://api.example.com/api/assets/uploads/private.png)',
+          excerpt: 'private image',
+          visibility: 'private',
+          displayDate: '2026-03-25',
+          createdAt: '2026-03-25T09:00:00.000Z',
+          updatedAt: '2026-03-25T09:00:00.000Z',
+          publishedAt: '2026-03-25T09:00:00.000Z',
+          deletedAt: null,
+          pinnedAt: null,
+          favoritedAt: null,
+          previousVisibility: null,
+          hasImages: true,
+          imageCount: 1,
+          tagCount: 0,
+          tags: [],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('img', { name: 'memo preview' })).toHaveAttribute(
+      'src',
+      'https://api.example.com/api/assets/uploads/private.png',
+    );
   });
 });

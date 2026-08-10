@@ -113,6 +113,7 @@ describe('MemoComposer voice note flow', () => {
         content: '',
         visibility: 'public',
         displayDate: '2026-04-13',
+        client_id: expect.any(String),
         voiceNote: expect.objectContaining({
           objectKey: 'uploads/voice.webm',
           audioUrl: 'https://cdn.example.com/uploads/voice.webm',
@@ -122,6 +123,26 @@ describe('MemoComposer voice note flow', () => {
     });
 
     expect(trackStop).toHaveBeenCalled();
+  });
+
+  it('keeps the reviewed recording when audio upload fails', async () => {
+    const onSubmit = vi.fn(async () => undefined);
+    const mediaRecorder = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      mimeType: 'audio/webm',
+      ondataavailable: null as ((event: BlobEvent) => void) | null,
+      onstop: null as (() => void) | null,
+    };
+    const stream = { getTracks: () => [{ stop: vi.fn() }] } as unknown as MediaStream;
+    const getUserMedia = vi.fn(async () => stream);
+    await prepareReviewedDraft({ getUserMedia, mediaRecorder });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ message: 'too large' }), { status: 413 })));
+
+    fireEvent.click(screen.getByRole('button', { name: '保存语音笔记' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存语音笔记' })).toBeInTheDocument());
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('uses browser-native transcription as content when the textarea is empty', async () => {
@@ -204,6 +225,7 @@ describe('MemoComposer voice note flow', () => {
         content: '这是浏览器原生转写',
         visibility: 'public',
         displayDate: '2026-04-13',
+        client_id: expect.any(String),
         voiceNote: expect.objectContaining({
           objectKey: 'uploads/voice.webm',
           transcriptText: '这是浏览器原生转写',
@@ -362,6 +384,51 @@ describe('MemoComposer voice note flow', () => {
     expect(screen.getByRole('button', { name: '重录' })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '取消' }).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: '停止录音' })).not.toBeInTheDocument();
+  });
+
+  it('does not let the previous audio draft cleanup stop a successful re-recording', async () => {
+    const firstTrackStop = vi.fn();
+    const secondTrackStop = vi.fn();
+    const streams = [
+      { getTracks: () => [{ stop: firstTrackStop }] },
+      { getTracks: () => [{ stop: secondTrackStop }] },
+    ] as unknown as MediaStream[];
+    let streamIndex = 0;
+    const getUserMedia = vi.fn(async () => streams[streamIndex++]);
+    const firstRecorder = { start: vi.fn(), stop: vi.fn(), mimeType: 'audio/webm', ondataavailable: null as ((event: BlobEvent) => void) | null, onstop: null as (() => void) | null };
+    const secondRecorder = { start: vi.fn(), stop: vi.fn(), mimeType: 'audio/webm', ondataavailable: null as ((event: BlobEvent) => void) | null, onstop: null as (() => void) | null };
+    const recorders = [firstRecorder, secondRecorder];
+    const recorderConstructor = vi.fn(() => recorders.shift()!);
+    const onSubmit = vi.fn(async () => undefined);
+
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { mediaDevices: { getUserMedia } },
+      configurable: true,
+    });
+    vi.stubGlobal('MediaRecorder', recorderConstructor);
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn(() => 'blob:voice-note'),
+      revokeObjectURL: vi.fn(),
+    });
+
+    render(<MemoComposer defaultDisplayDate="2026-04-13" onSubmit={onSubmit} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '录音' }));
+    await screen.findByRole('button', { name: '停止录音' });
+    await act(async () => {
+      firstRecorder.ondataavailable?.({ data: new Blob(['first'], { type: 'audio/webm' }) } as BlobEvent);
+      firstRecorder.onstop?.();
+    });
+    await screen.findByRole('button', { name: '保存语音笔记' });
+
+    fireEvent.click(screen.getByRole('button', { name: '重录' }));
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByRole('button', { name: '停止录音' })).toBeInTheDocument();
+    expect(secondTrackStop).not.toHaveBeenCalled();
+    expect(secondRecorder.start).toHaveBeenCalled();
+    expect(recorders).toHaveLength(0);
   });
 
   it('stops the acquired stream when recorder setup fails after getUserMedia', async () => {

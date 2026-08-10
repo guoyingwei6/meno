@@ -1,39 +1,46 @@
 import { Hono } from 'hono';
-import { deleteTag, getAuthorMemoBySlug, getDashboardStats, getRecordStats, listAuthorDateCounts, listAuthorMemos, listAuthorTagCounts, renameTag, searchAuthorMemos } from '../db/memo-repository';
+import { DEFAULT_MEMO_SORT, decodeMemoCursor, deleteTag, encodeMemoCursor, getAuthorMemoBySlug, getDashboardStats, getRecordStats, isMemoSort, listAuthorDateCounts, listAuthorMemos, listAuthorTagCounts, renameTag, searchAuthorMemos, type MemoSort } from '../db/memo-repository';
 import { createMemoShare, revokeMemoShare } from '../db/share-repository';
 import { getAppSettings, updateAppSettings } from '../db/settings-repository';
 import type { WorkerBindings } from '../db/client';
-import { isAuthorSession } from '../lib/auth';
+import { resolveAuthorSession } from '../lib/auth';
 import { parseTags } from '../lib/tag-parser';
 
 export const dashboardRoutes = new Hono<{ Bindings: WorkerBindings }>();
 
-const parsePagination = (limitParam?: string, cursorParam?: string) => {
+const parsePagination = (limitParam?: string, cursorParam?: string): { limit?: number; cursor?: string } => {
   const rawLimit = Number(limitParam);
   if (!Number.isFinite(rawLimit) || rawLimit <= 0) {
     return {};
   }
   const limit = Math.min(Math.floor(rawLimit), 100);
-  const cursor = String(Math.max(0, Number(cursorParam ?? 0) || 0));
-  return { limit, cursor };
+  const cursor = cursorParam?.trim() || undefined;
+  return { limit, ...(cursor ? { cursor } : {}) };
 };
 
-const buildPagedResponse = <T>(items: T[], limit?: number, cursor?: string) => {
+const parseBooleanFilter = (value: string | undefined): boolean | undefined | null => {
+  if (value === undefined) return undefined;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return null;
+};
+
+const buildPagedResponse = <T extends { pinnedAt: string | null; displayDate: string; createdAt: string; updatedAt: string; id: number }>(items: T[], limit?: number, sort: MemoSort = DEFAULT_MEMO_SORT) => {
   if (!limit) return { memos: items };
   const hasMore = items.length > limit;
   const memos = hasMore ? items.slice(0, limit) : items;
-  const offset = Math.max(0, Number(cursor ?? 0) || 0);
   return {
     memos,
-    nextCursor: hasMore ? String(offset + limit) : null,
+    nextCursor: hasMore && memos.length > 0 ? encodeMemoCursor(memos[memos.length - 1], sort) : null,
   };
 };
 
 dashboardRoutes.use('*', async (c, next) => {
-  if (!isAuthorSession(c.req.header('Cookie'))) {
+  if (!await resolveAuthorSession(c.env, c.req.header('Cookie'))) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
 
+  c.header('Cache-Control', 'private, no-store');
   await next();
 });
 
@@ -77,17 +84,43 @@ dashboardRoutes.get('/memos/search', async (c) => {
 dashboardRoutes.get('/memos', async (c) => {
   const view = (c.req.query('view') ?? 'all') as 'all' | 'public' | 'private' | 'trash' | 'favorited';
   const date = c.req.query('date');
+  const tag = c.req.query('tag');
+  const rawSort = c.req.query('sort');
+  if (rawSort && !isMemoSort(rawSort)) {
+    return c.json({ message: 'Invalid sort' }, 400);
+  }
+  const sort: MemoSort = rawSort && isMemoSort(rawSort) ? rawSort : DEFAULT_MEMO_SORT;
+  const hasImages = parseBooleanFilter(c.req.query('has_images'));
+  const hasTags = parseBooleanFilter(c.req.query('has_tags'));
+  if (hasImages === null || hasTags === null) {
+    return c.json({ message: 'Invalid boolean filter' }, 400);
+  }
+  const rawCursor = c.req.query('cursor');
+  const cursor = rawCursor ? decodeMemoCursor(rawCursor) : null;
+  if (rawCursor && (!cursor || cursor.sort !== sort)) {
+    return c.json({ message: 'Invalid cursor' }, 400);
+  }
   const pagination = parsePagination(c.req.query('limit'), c.req.query('cursor'));
   const fetchLimit = pagination.limit ? pagination.limit + 1 : undefined;
-  const memos = await listAuthorMemos(c.env.DB, { view, date, ...pagination, limit: fetchLimit });
-  return c.json(buildPagedResponse(memos, pagination.limit, pagination.cursor));
+  const memos = await listAuthorMemos(c.env.DB, { view, date, tag, hasImages, hasTags, sort, ...pagination, limit: fetchLimit });
+  return c.json(buildPagedResponse(memos, pagination.limit, sort));
 });
 
 dashboardRoutes.post('/memos/:id/share', async (c) => {
   const id = Number(c.req.param('id'));
   if (!Number.isFinite(id)) return c.json({ message: 'Invalid memo id' }, 400);
 
-  const share = await createMemoShare(c.env.DB, id);
+  const rawExpiresInHours = c.req.query('expiresInHours');
+  let expiresAt: string | null = null;
+  if (rawExpiresInHours !== undefined) {
+    const expiresInHours = Number(rawExpiresInHours);
+    if (!Number.isFinite(expiresInHours) || expiresInHours <= 0 || expiresInHours > 24 * 365) {
+      return c.json({ message: 'Invalid share expiry' }, 400);
+    }
+    expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000).toISOString();
+  }
+
+  const share = await createMemoShare(c.env.DB, id, expiresAt);
   if (!share) return c.json({ message: 'Memo not found' }, 404);
 
   return c.json({

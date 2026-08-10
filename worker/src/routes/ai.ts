@@ -2,13 +2,13 @@ import { Hono } from 'hono';
 import { chatWithKnowledgeBase, indexKnowledgeBase } from '../lib/ai-rag';
 import { getMemoImageOcrQueueStatus, processMemoImageOcrQueue } from '../lib/image-ocr';
 import type { WorkerBindings } from '../db/client';
-import { isAuthorSession } from '../lib/auth';
+import { resolveAuthorSession } from '../lib/auth';
 import type { AiChatMessage, AiConfig } from '../../../shared/src/types';
 
 export const aiRoutes = new Hono<{ Bindings: WorkerBindings }>();
 
 aiRoutes.use('*', async (c, next) => {
-  if (!isAuthorSession(c.req.header('Cookie'))) {
+  if (!await resolveAuthorSession(c.env, c.req.header('Cookie'))) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
 

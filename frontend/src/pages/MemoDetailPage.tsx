@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import ReactMarkdown from 'react-markdown';
+import { lazy, Suspense } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { fetchAuthorMemo, fetchMe, fetchPublicMemo, pinMemo as pinMemoApi, unpinMemo as unpinMemoApi } from '../lib/api';
-import { stripTagSyntax } from '../lib/content';
+import { shouldRenderMarkdown, stripHtmlTags, stripTagSyntax } from '../lib/content';
 import { useTheme, colors } from '../lib/theme';
+
+const LazySafeMarkdown = lazy(() => import('../components/SafeMarkdown').then((module) => ({ default: module.SafeMarkdown })));
 
 const VoiceNoteBlock = ({ audioUrl, pending }: { audioUrl: string; pending: boolean }) => (
   <div style={detailStyles.voiceBlock}>
@@ -75,8 +77,11 @@ export const MemoDetailPage = () => {
             pending={data.memo.voiceNote.transcriptStatus !== 'done'}
           />
         ) : null}
-        <ReactMarkdown
-          components={{
+        {shouldRenderMarkdown(stripTagSyntax(data.memo.content)) ? (
+          <Suspense fallback={<p style={{ lineHeight: 1.7, fontSize: 14, color: c.textSecondary, margin: '0 0 8px', whiteSpace: 'pre-wrap' }}>{stripHtmlTags(stripTagSyntax(data.memo.content))}</p>}>
+            <LazySafeMarkdown
+              content={stripTagSyntax(data.memo.content)}
+              components={{
             img: ({ src = '', alt = '' }) => <img src={src} alt={alt || 'memo image'} style={{ maxWidth: '100%', borderRadius: 8, margin: '8px 0' }} />,
             p: ({ children }) => <p style={{ lineHeight: 1.7, fontSize: 14, color: c.textSecondary, margin: '0 0 8px', whiteSpace: 'pre-wrap' }}>{children}</p>,
             h1: ({ children }) => <p style={{ lineHeight: 1.7, fontSize: 14, color: c.textSecondary, margin: '0 0 8px' }}>{children}</p>,
@@ -89,10 +94,12 @@ export const MemoDetailPage = () => {
             code: ({ children, className }) => className
               ? <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace', fontSize: 13 }}>{children}</code>
               : <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace', fontSize: 13, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', padding: '2px 5px', borderRadius: 3 }}>{children}</code>,
-          }}
-        >
-          {stripTagSyntax(data.memo.content)}
-        </ReactMarkdown>
+              }}
+            />
+          </Suspense>
+        ) : (
+          <p style={{ lineHeight: 1.7, fontSize: 14, color: c.textSecondary, margin: '0 0 8px', whiteSpace: 'pre-wrap' }}>{stripTagSyntax(data.memo.content)}</p>
+        )}
       </div>
     </article>
   );

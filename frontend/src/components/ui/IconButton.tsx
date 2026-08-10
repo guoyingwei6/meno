@@ -1,5 +1,5 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
-import { useTheme, colors } from '../../lib/theme';
+import { useState, type ButtonHTMLAttributes, type CSSProperties, type FocusEvent, type MouseEvent, type ReactNode } from 'react';
+import { designTokens, useTheme } from '../../lib/theme';
 
 interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   label: string;
@@ -10,37 +10,66 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export const IconButton = ({ label, title, active, disabled, children, style, ...props }: IconButtonProps) => {
   const { isDark } = useTheme();
-  const c = colors(isDark);
+  const { colors: c, spacing: s, radius: r, interaction: i } = designTokens(isDark);
+  const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+
+  const handleFocus = (event: FocusEvent<HTMLButtonElement>) => {
+    setFocused(true);
+    props.onFocus?.(event);
+  };
+
+  const handleBlur = (event: FocusEvent<HTMLButtonElement>) => {
+    setFocused(false);
+    props.onBlur?.(event);
+  };
+
+  const handleMouseEnter = (event: MouseEvent<HTMLButtonElement>) => {
+    setHovered(true);
+    props.onMouseEnter?.(event);
+  };
+
+  const handleMouseLeave = (event: MouseEvent<HTMLButtonElement>) => {
+    setHovered(false);
+    props.onMouseLeave?.(event);
+  };
 
   return (
     <button
+      {...props}
       type="button"
       aria-label={label}
       title={title ?? label}
       disabled={disabled}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       style={{
         ...styles.button,
+        padding: s.xs,
+        borderRadius: r.sm,
         color: active ? c.accent : c.textTertiary,
-        background: active ? (isDark ? 'rgba(58,168,100,0.16)' : 'rgba(58,168,100,0.1)') : 'transparent',
-        opacity: disabled ? 0.5 : 1,
+        background: active ? i.activeSurface : !disabled && hovered ? i.hoverSurface : 'transparent',
+        opacity: disabled ? i.disabledOpacity : 1,
         cursor: disabled ? 'not-allowed' : 'pointer',
+        boxShadow: focused ? i.focusRing : 'none',
+        transition: i.transition,
         ...style,
       }}
-      {...props}
     >
       {children}
     </button>
   );
 };
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   button: {
     border: 'none',
-    padding: 4,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 6,
-    transition: 'background 0.15s ease, color 0.15s ease, opacity 0.15s ease',
+    outline: 'none',
+    appearance: 'none',
   },
 };

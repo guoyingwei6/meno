@@ -34,7 +34,7 @@ describe('MemoCard edit actions', () => {
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
 
     // 点击编辑应进入内联编辑模式而非调用回调
-    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '编辑' }));
     expect(screen.getByText('编辑 Memo')).toBeTruthy();
 
     // 取消编辑
@@ -43,7 +43,7 @@ describe('MemoCard edit actions', () => {
     // 再次打开菜单
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
 
-    fireEvent.click(screen.getByRole('button', { name: '设为公开' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '设为公开' }));
     expect(onChangeVisibility).toHaveBeenCalledWith(memo, 'public');
   });
 
@@ -58,7 +58,7 @@ describe('MemoCard edit actions', () => {
     // 先打开 ··· 下拉菜单
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
 
-    fireEvent.click(screen.getByRole('button', { name: '设为私密' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '设为私密' }));
     expect(onChangeVisibility).toHaveBeenCalledWith(memo, 'private');
   });
 
@@ -66,7 +66,7 @@ describe('MemoCard edit actions', () => {
     const memo = { ...baseMemo, visibility: 'public' as const };
     render(<MemoCard memo={memo} />);
 
-    expect(screen.queryByRole('button', { name: '编辑' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: '编辑' })).toBeNull();
   });
 
   it('saves inline edited images in the reordered sequence', () => {
@@ -82,7 +82,7 @@ describe('MemoCard edit actions', () => {
     render(<MemoCard memo={memo} isAuthor onSaveEdit={onSaveEdit} />);
 
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '编辑' }));
     fireEvent.click(screen.getByLabelText('下移 a.png'));
     fireEvent.click(screen.getByRole('button', { name: '保存编辑' }));
 
@@ -105,7 +105,7 @@ describe('MemoCard edit actions', () => {
     render(<MemoCard memo={memo} isAuthor />);
 
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '编辑' }));
 
     expect(screen.getByRole('img', { name: 'a.png' })).toHaveStyle({
       backgroundImage: 'url(https://cdn.example.com/uploads/a.png)',

@@ -23,6 +23,7 @@ describe('POST /api/upload-url', () => {
       headers: {
         'Content-Type': 'application/json',
         Cookie: 'meno_session=valid-author-session',
+        Origin: 'https://meno.guoyingwei.top',
       },
       body: JSON.stringify({ filename: 'image.png', contentType: 'image/png' }),
     }, env);
@@ -32,7 +33,7 @@ describe('POST /api/upload-url', () => {
     const payload = await response.json();
     expect(payload).toEqual({
       uploadUrl: expect.stringContaining('/uploads/'),
-      objectKey: expect.stringMatching(/^uploads\/\d{4}\/\d{2}\/\d{14}\d{3}\.png$/),
+      objectKey: expect.stringMatching(/^uploads\/\d{4}\/\d{2}\/[0-9a-f]{64}\.png$/),
     });
   });
 });

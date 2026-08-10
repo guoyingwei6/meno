@@ -1,14 +1,52 @@
 import { Hono } from 'hono';
-import { createSession } from '../db/session-repository';
+import { createSession, deleteSessionById } from '../db/session-repository';
 import type { WorkerBindings } from '../db/client';
-import { getAuthorPayload, getViewerPayload, resolveAuthorSession } from '../lib/auth';
-import { createMemoSlug } from '../lib/slug';
+import {
+  extractSessionId,
+  getAuthorPayload,
+  getViewerPayload,
+  isAllowedOrigin,
+  resolveAuthorSession,
+} from '../lib/auth';
 
 export const authRoutes = new Hono<{ Bindings: WorkerBindings }>();
 
+const sessionCookie = (value: string, maxAge: number) => {
+  // A host-only cookie is still sent to this API when the browser's fetch
+  // originates from the app or Pages preview. Avoid Domain= so sibling
+  // subdomains cannot overwrite the session cookie.
+  return `meno_session=${value}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${maxAge}`;
+};
+
+const oauthStateCookie = (value: string, maxAge: number) => {
+  // OAuth state is only consumed by the API callback. Keep it host-only and
+  // callback-scoped so a sibling subdomain cannot overwrite or receive it.
+  return `meno_oauth_state=${value}; Path=/api/auth/github/callback; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+};
+
+const clearSessionCookie = () => {
+  return 'meno_session=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0';
+};
+
+const clearOauthStateCookie = () => {
+  return 'meno_oauth_state=; Path=/api/auth/github/callback; HttpOnly; Secure; SameSite=Lax; Max-Age=0';
+};
+
+const hasAllowedOrigin = (c: { env: WorkerBindings; req: { header(name: string): string | undefined } }) => {
+  return isAllowedOrigin(c.env, c.req.header('Origin'));
+};
+
 authRoutes.get('/me', async (c) => {
-  const session = await resolveAuthorSession(c.env, c.req.header('Cookie'));
+  const cookie = c.req.header('Cookie');
+  const session = await resolveAuthorSession(c.env, cookie);
   if (!session) {
+    // A missing cookie is an anonymous viewer. A supplied but forged,
+    // expired, or revoked cookie is an authentication failure instead of a
+    // silent downgrade to viewer state.
+    if (extractSessionId(cookie)) {
+      c.header('Set-Cookie', clearSessionCookie());
+      return c.json({ message: 'Unauthorized' }, 401);
+    }
     return c.json(getViewerPayload());
   }
 
@@ -23,7 +61,7 @@ authRoutes.get('/auth/github/login', (c) => {
   url.searchParams.set('scope', 'read:user');
   url.searchParams.set('state', state);
 
-  c.header('Set-Cookie', `meno_oauth_state=${state}; Path=/; HttpOnly; SameSite=None; Secure`);
+  c.header('Set-Cookie', oauthStateCookie(state, 600));
   return c.redirect(url.toString(), 302);
 });
 
@@ -68,20 +106,28 @@ authRoutes.get('/auth/github/callback', async (c) => {
     return c.json({ message: 'Unauthorized GitHub account' }, 403);
   }
 
-  const sessionId = createMemoSlug();
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString();
-  await createSession(c.env.DB, {
-    id: sessionId,
+  const session = await createSession(c.env.DB, {
     githubUserId: String(userPayload.id),
     githubLogin: userPayload.login,
     expiresAt,
   });
 
-  c.header('Set-Cookie', `meno_session=${sessionId}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=604800`);
+  c.header('Set-Cookie', sessionCookie(session.id, 604800));
+  c.header('Set-Cookie', clearOauthStateCookie(), { append: true });
   return c.redirect(`${c.env.APP_ORIGIN}/`, 302);
 });
 
-authRoutes.post('/auth/logout', (c) => {
-  c.header('Set-Cookie', 'meno_session=; Path=/; HttpOnly; Max-Age=0; SameSite=None; Secure');
+authRoutes.post('/auth/logout', async (c) => {
+  if (!hasAllowedOrigin(c)) {
+    return c.json({ message: 'Invalid origin' }, 403);
+  }
+
+  const sessionId = extractSessionId(c.req.header('Cookie'));
+  if (sessionId) {
+    await deleteSessionById(c.env.DB, sessionId);
+  }
+
+  c.header('Set-Cookie', clearSessionCookie());
   return c.json({ success: true });
 });

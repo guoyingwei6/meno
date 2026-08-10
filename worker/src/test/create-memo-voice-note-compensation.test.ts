@@ -27,6 +27,7 @@ describe('POST /api/memos voice note compensation', () => {
         headers: {
           'Content-Type': 'application/json',
           Cookie: 'meno_session=valid-author-session',
+          Origin: 'https://meno.guoyingwei.top',
         },
         body: JSON.stringify({
           content: 'Compensation memo #audio-fail',

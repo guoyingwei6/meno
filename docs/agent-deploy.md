@@ -4,7 +4,7 @@
 
 ## 原则
 
-- Worker 部署必须使用 `worker/wrangler.local.toml`。
+- Worker 部署必须以 `worker/wrangler.local.toml` 为真实配置源，并使用脚本生成的去敏 `worker/wrangler.deploy.toml`。
 - 不要用 `worker/wrangler.toml` 部署；它是提交到仓库的占位模板。
 - GitHub Actions 自动部署使用临时生成的 `worker/wrangler.ci.toml`。
 - 不要在日志、提交信息、README 或聊天总结里输出 secret、token、OAuth secret、API token。
@@ -19,9 +19,11 @@ push 到 `main` 会触发 `.github/workflows/deploy.yml`：
 2. 运行 `npm run verify`。
 3. 生成 CI Wrangler 配置。
 4. 执行 D1 migrations。
-5. 同步 Worker secrets。
-6. 部署 Worker。
+5. 部署 Worker 配置，先移除可能遗留的普通变量绑定。
+6. 同步 Worker secrets。
 7. 部署 Cloudflare Pages 前端。
+
+第 5、6 步的顺序是有意的：先用不含 secret 值的 CI 配置部署，避免旧的普通变量绑定与 `wrangler secret put` 同名冲突。不得把 secret 写入 CI 配置或日志。
 
 若 workflow 失败，优先检查 GitHub Secrets / Variables 是否齐全。不要把缺失的 secret 直接写入仓库文件。
 
@@ -68,9 +70,9 @@ npm run verify
 npm run deploy:dry-run
 ```
 
-该命令会先执行严格部署配置检查，再构建前端，并用 `worker/wrangler.local.toml` 对 Worker 做 dry-run。dry-run 失败时不要部署。
+该命令会先执行严格部署配置检查，再构建前端，并以提交到仓库的 `worker/wrangler.toml` 占位模板构建 Worker。它不读取或输出本地真实部署配置，也不连接生产资源；失败时不要部署。
 
-严格部署配置检查会阻止 secret 类变量继续留在 `worker/wrangler.local.toml` 的 `[vars]` 中，因为 Wrangler dry-run/deploy 可能打印 `[vars]` 的值。应改用 Wrangler secrets。
+严格部署配置检查会阻止 secret 类变量继续留在 `worker/wrangler.local.toml` 的 `[vars]` 中，并生成不含这些值的临时 `worker/wrangler.deploy.toml`。正式部署使用该临时文件；secret 应改用 Wrangler secrets。
 
 ### 5. 正式部署
 
@@ -78,13 +80,20 @@ npm run deploy:dry-run
 npm run deploy
 ```
 
-该命令会先跑 `verify`，再部署 Cloudflare Pages 前端和 Cloudflare Worker。
+该命令会先跑 `verify` 与严格配置检查，再按 D1 migration → Cloudflare Worker → Cloudflare Pages 的顺序发布。它不会隐式删除旧 session；健康检查通过后仍须取得用户单独授权。
 
 也可以拆开执行：
 
 ```bash
-npm run deploy:frontend
+npm run deploy:migrations
 npm run deploy:worker
+npm run deploy:frontend
+```
+
+部署和验收完成后清理临时配置：
+
+```bash
+npm run config:clean:deploy
 ```
 
 ## 常见失败处理

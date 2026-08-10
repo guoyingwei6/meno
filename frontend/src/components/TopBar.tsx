@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useTheme, colors, type ThemeMode } from '../lib/theme';
+import { designTokens, radius, spacing, useTheme, type ThemeMode } from '../lib/theme';
 import { IconButton } from './ui/IconButton';
 
 interface TopBarProps {
@@ -10,6 +10,7 @@ interface TopBarProps {
   onRefresh?: () => Promise<void> | void;
   onImportExport?: () => void;
   onAiConfig?: () => void;
+  onSettings?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
 }
@@ -25,9 +26,9 @@ const ThemeToggle = () => {
   );
 };
 
-export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, onRefresh, onImportExport, onAiConfig, searchQuery = '', onSearchChange }: TopBarProps) => {
+export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, onRefresh, onImportExport, onAiConfig, onSettings, searchQuery = '', onSearchChange }: TopBarProps) => {
   const { isDark } = useTheme();
-  const c = colors(isDark);
+  const { colors: c } = designTokens(isDark);
   const [spinning, setSpinning] = useState(false);
 
   const handleRefresh = async () => {
@@ -75,6 +76,11 @@ export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, 
             </svg>
           </IconButton>
         )}
+        {authenticated && (
+          <IconButton label="设置" onClick={onSettings}>
+            <span aria-hidden="true" style={{ fontSize: 17 }}>⚙️</span>
+          </IconButton>
+        )}
       </div>
       <div style={styles.actions}>
         <div style={{ ...styles.searchWrap, background: c.inputBg, borderColor: c.border }}>
@@ -89,11 +95,11 @@ export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, 
             style={{ ...styles.searchInput, color: c.textPrimary }}
           />
           {searchQuery && (
-            <button type="button" style={styles.searchClear} onClick={() => onSearchChange?.('')} aria-label="清除搜索">
+            <IconButton label="清除搜索" onClick={() => onSearchChange?.('')} style={styles.searchClear}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={c.textMuted} strokeWidth="2">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
               </svg>
-            </button>
+            </IconButton>
           )}
         </div>
       </div>
@@ -102,12 +108,12 @@ export const TopBar = ({ authenticated, githubLogin, onLogout, onToggleSidebar, 
 };
 
 const styles: Record<string, React.CSSProperties> = {
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 16 },
-  leftActions: { display: 'flex', alignItems: 'center', gap: 4 },
-  actions: { display: 'flex', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'flex-end' },
-  searchWrap: { display: 'flex', alignItems: 'center', gap: 6, border: '1px solid', borderRadius: 8, padding: '5px 10px', maxWidth: 240, flex: 1 },
+  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.xl, marginBottom: spacing.xl },
+  leftActions: { display: 'flex', alignItems: 'center', gap: spacing.xs },
+  actions: { display: 'flex', alignItems: 'center', gap: spacing.md, flex: 1, justifyContent: 'flex-end' },
+  searchWrap: { display: 'flex', alignItems: 'center', gap: spacing.sm, border: '1px solid', borderRadius: radius.md, padding: `${spacing.compactY}px ${spacing.inputX}px`, maxWidth: 240, flex: 1 },
   searchInput: { border: 'none', outline: 'none', background: 'transparent', fontSize: 13, width: '100%', lineHeight: 1.4 },
-  searchClear: { border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' },
+  searchClear: { padding: spacing.none },
   identity: { fontWeight: 600, fontSize: 14 },
   authButtonSecondary: { border: '1px solid #e0e0e0', borderRadius: 8, padding: '6px 12px', background: '#fff', cursor: 'pointer', fontSize: 13 },
 };

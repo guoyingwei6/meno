@@ -12,11 +12,15 @@
     "test": "npm run test --workspace frontend && npm run test --workspace worker",
     "typecheck": "npm run typecheck --workspace frontend && npm run typecheck --workspace worker",
     "config:check": "node scripts/check-config.mjs",
-    "config:check:deploy": "node scripts/check-config.mjs --deploy",
+    "config:prepare:deploy": "node scripts/write-local-deploy-config.mjs",
+    "config:clean:deploy": "node scripts/write-local-deploy-config.mjs --clean",
+    "config:check:deploy": "npm run config:prepare:deploy && node scripts/check-config.mjs --deploy --config=worker/wrangler.deploy.toml",
     "verify": "node scripts/preflight.mjs",
     "deploy:dry-run": "npm run config:check:deploy && npm run build --workspace frontend && npm run build --workspace worker",
+    "deploy:migrations": "npm run config:check:deploy && node scripts/apply-d1-migrations.mjs --remote --config=worker/wrangler.deploy.toml --database=meno",
     "deploy:frontend": "npm run build --workspace frontend && cd frontend && npx wrangler pages deploy dist --project-name=meno",
-    "deploy:worker": "npm run config:check:deploy && npm run build --workspace worker && cd worker && npx wrangler deploy --config wrangler.local.toml",
-    "deploy": "npm run verify && npm run deploy:frontend && npm run deploy:worker"
+    "deploy:worker": "npm run config:check:deploy && npm run build --workspace worker && cd worker && npx wrangler deploy --config wrangler.deploy.toml",
+    "deploy": "npm run verify && npm run config:check:deploy && npm run deploy:migrations && npm run deploy:worker && npm run deploy:frontend",
+    "measure:composer-startup": "node scripts/measure-composer-startup.mjs"
   }
 }

@@ -12,6 +12,9 @@ describe('GitHub OAuth routes', () => {
     expect(response.headers.get('location')).toContain('client_id=github-client-id');
     expect(response.headers.get('location')).toContain(encodeURIComponent('https://api.meno.guoyingwei.top/api/auth/github/callback'));
     expect(response.headers.get('location')).toContain('state=');
+    expect(response.headers.get('set-cookie')).not.toContain('Domain=');
+    expect(response.headers.get('set-cookie')).toContain('Path=/api/auth/github/callback');
+    expect(response.headers.get('set-cookie')).toContain('SameSite=Lax');
   });
 
   it('rejects callback when state cookie is missing', async () => {
@@ -42,9 +45,11 @@ describe('GitHub OAuth routes', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('set-cookie')).toContain('meno_session=');
-    expect(response.headers.get('set-cookie')).not.toContain('Domain=.guoyingwei.top');
+    expect(response.headers.get('set-cookie')).not.toContain('Domain=');
     expect(response.headers.get('set-cookie')).toContain('SameSite=None');
     expect(response.headers.get('set-cookie')).toContain('Secure');
+    expect(response.headers.get('set-cookie')).toContain('meno_oauth_state=; Path=/api/auth/github/callback');
+    expect(response.headers.get('set-cookie')).toContain('SameSite=Lax');
     expect(response.headers.get('location')).toBe('https://meno.guoyingwei.top/');
     exchangeSpy.mockRestore();
   });

@@ -20,4 +20,19 @@ describe('IconButton', () => {
 
     expect(onClick).not.toHaveBeenCalled();
   });
+
+  it('renders tokenized hover and focus states while forwarding handlers', () => {
+    const onFocus = vi.fn();
+    const onMouseEnter = vi.fn();
+    render(<IconButton label="设置" onFocus={onFocus} onMouseEnter={onMouseEnter}>⚙</IconButton>);
+
+    const button = screen.getByRole('button', { name: '设置' });
+    fireEvent.mouseEnter(button);
+    fireEvent.focus(button);
+
+    expect(onMouseEnter).toHaveBeenCalledTimes(1);
+    expect(onFocus).toHaveBeenCalledTimes(1);
+    expect(button.style.background).toBe('rgba(17, 17, 17, 0.04)');
+    expect(button.style.boxShadow).toContain('0 0 0 3px');
+  });
 });

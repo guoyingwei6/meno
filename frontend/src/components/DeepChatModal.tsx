@@ -1,11 +1,31 @@
-import { useState } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import ReactMarkdown from 'react-markdown';
 import { chatWithKnowledgeBase, fetchAuthorMemo, fetchOcrQueueStatus, rebuildKnowledgeIndex, runOcrQueue } from '../lib/api';
 import { getAiConfig } from '../lib/ai-config';
-import { stripTagSyntax } from '../lib/content';
-import { useTheme, colors } from '../lib/theme';
+import { shouldRenderMarkdown, stripHtmlTags, stripTagSyntax } from '../lib/content';
+import { designTokens, useTheme } from '../lib/theme';
 import type { AiChatMessage, KnowledgeSource } from '../types/shared';
+import { Button } from './ui/Button';
+import { IconButton } from './ui/IconButton';
+
+const LazySafeMarkdown = lazy(() => import('./SafeMarkdown').then((module) => ({ default: module.SafeMarkdown })));
+
+const FOCUSABLE_SELECTOR = [
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'a[href]',
+  '[contenteditable="true"]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
+
+const getFocusableElements = (container: HTMLElement) => Array.from(
+  container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+).filter((element) => {
+  const computedStyle = window.getComputedStyle(element);
+  return computedStyle.display !== 'none' && computedStyle.visibility !== 'hidden';
+});
 
 interface DeepChatModalProps {
   onClose?: () => void;
@@ -21,7 +41,8 @@ interface ChatTurn {
 
 export const DeepChatModal = ({ onClose, onOpenAiConfig, embedded = false }: DeepChatModalProps) => {
   const { isDark } = useTheme();
-  const c = colors(isDark);
+  const { colors: c, spacing: s, radius: r, shadow, interaction: i } = designTokens(isDark);
+  const dialogRef = useRef<HTMLElement>(null);
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<ChatTurn[]>([]);
   const [loading, setLoading] = useState(false);
@@ -30,12 +51,37 @@ export const DeepChatModal = ({ onClose, onOpenAiConfig, embedded = false }: Dee
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [activeSource, setActiveSource] = useState<KnowledgeSource | null>(null);
+  const [questionFocused, setQuestionFocused] = useState(false);
 
   const config = getAiConfig();
   const ocrStatusQuery = useQuery({
     queryKey: ['ocr-queue-status'],
     queryFn: fetchOcrQueueStatus,
   });
+
+  useLayoutEffect(() => {
+    if (embedded) return;
+
+    const previouslyFocused = document.activeElement;
+    const previouslyFocusedElement = previouslyFocused instanceof HTMLElement ? previouslyFocused : null;
+    const dialog = dialogRef.current;
+    const firstFocusable = dialog ? getFocusableElements(dialog)[0] : null;
+    (firstFocusable ?? dialog)?.focus();
+
+    return () => {
+      if (previouslyFocusedElement?.isConnected) previouslyFocusedElement.focus();
+    };
+  }, [embedded]);
+
+  useEffect(() => {
+    if (embedded || !onClose) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [embedded, onClose]);
 
   const handleRebuild = async () => {
     setIndexing(true);
@@ -106,29 +152,67 @@ export const DeepChatModal = ({ onClose, onOpenAiConfig, embedded = false }: Dee
     void handleSend();
   };
 
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (embedded || event.key !== 'Tab') return;
+
+    const focusableElements = getFocusableElements(event.currentTarget);
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      event.currentTarget.focus();
+      return;
+    }
+
+    const currentIndex = focusableElements.indexOf(document.activeElement as HTMLElement);
+    if (event.shiftKey && currentIndex <= 0) {
+      event.preventDefault();
+      focusableElements[focusableElements.length - 1].focus();
+    } else if (!event.shiftKey && (currentIndex === -1 || currentIndex === focusableElements.length - 1)) {
+      event.preventDefault();
+      focusableElements[0].focus();
+    }
+  };
+
   const content = (
-    <div style={{ ...(embedded ? styles.embedded : styles.modal), background: c.cardBg, borderColor: c.border }}>
-        <div style={styles.header}>
+    <section
+      ref={embedded ? undefined : dialogRef}
+      role={embedded ? undefined : 'dialog'}
+      aria-modal={embedded ? undefined : 'true'}
+      aria-label={embedded ? undefined : '深度对话'}
+      aria-describedby={embedded ? undefined : 'deep-chat-description'}
+      tabIndex={embedded ? undefined : -1}
+      onKeyDown={embedded ? undefined : handleDialogKeyDown}
+      style={{
+        ...(embedded ? styles.embedded : styles.modal),
+        background: c.cardBg,
+        borderColor: c.borderMedium,
+        borderRadius: r.xl,
+        boxShadow: embedded ? shadow.none : shadow.panel,
+        gap: s.lg,
+        padding: s['2xl'],
+        color: c.textPrimary,
+      }}
+    >
+        <div style={{ ...styles.header, gap: s.lg }}>
           <div>
             <h3 style={{ margin: 0, fontSize: 18, color: c.textPrimary }}>深度对话</h3>
-            <p style={{ margin: '6px 0 0', fontSize: 13, color: c.textMuted }}>仅基于你的公开笔记检索回答，支持追问。</p>
+            <p id={embedded ? undefined : 'deep-chat-description'} style={{ margin: '6px 0 0', fontSize: 13, color: c.textMuted }}>仅基于你的公开笔记检索回答，支持追问。</p>
           </div>
-          {!embedded && onClose && <button type="button" onClick={onClose} style={{ ...styles.closeButton, color: c.textTertiary }}>×</button>}
+          {!embedded && onClose && <IconButton label="关闭深度对话" onClick={onClose} style={{ fontSize: 20, lineHeight: 1, color: c.textTertiary }}>×</IconButton>}
         </div>
 
-        <div style={styles.toolbar}>
-          <button type="button" style={{ ...styles.secondaryButton, borderColor: c.borderMedium, color: c.textPrimary, background: c.pageBg }} onClick={onOpenAiConfig}>
+        <div style={{ ...styles.toolbar, gap: s.md }}>
+          <Button variant="secondary" onClick={onOpenAiConfig} style={{ background: c.pageBg }}>
             AI 配置
-          </button>
-          <button type="button" style={{ ...styles.primaryButton, opacity: indexing ? 0.7 : 1 }} disabled={indexing} onClick={handleRebuild}>
+          </Button>
+          <Button variant="primary" disabled={indexing} onClick={handleRebuild}>
             {indexing ? '索引中...' : '重建知识库索引'}
-          </button>
-          <button type="button" style={{ ...styles.secondaryButton, borderColor: c.borderMedium, color: c.textPrimary, background: c.pageBg, opacity: runningOcr ? 0.7 : 1 }} disabled={runningOcr} onClick={handleRunOcr}>
+          </Button>
+          <Button variant="secondary" disabled={runningOcr} onClick={handleRunOcr} style={{ background: c.pageBg }}>
             {runningOcr ? 'OCR 运行中...' : '手动跑一轮 OCR'}
-          </button>
+          </Button>
         </div>
 
-        <div style={{ ...styles.banner, background: c.pageBg, borderColor: c.borderMedium, color: c.textMuted }}>
+        <div style={{ ...styles.banner, background: c.pageBg, borderColor: c.borderMedium, color: c.textMuted, borderRadius: r.md, padding: `${s.lg}px ${s.controlX}px` }}>
           {ocrStatusQuery.isLoading ? (
             'OCR 队列状态加载中...'
           ) : ocrStatusQuery.error ? (
@@ -143,14 +227,14 @@ export const DeepChatModal = ({ onClose, onOpenAiConfig, embedded = false }: Dee
         </div>
 
         {!config && (
-          <div style={{ ...styles.banner, background: c.pageBg, borderColor: c.borderMedium, color: c.textMuted }}>
+          <div style={{ ...styles.banner, background: c.pageBg, borderColor: c.borderMedium, color: c.textMuted, borderRadius: r.md, padding: `${s.lg}px ${s.controlX}px` }}>
             还没配置回答模型，先去设置 GitHub Models 或其他 OpenAI 兼容接口。
           </div>
         )}
-        {notice && <div style={{ ...styles.success, background: c.accentLight, color: c.textPrimary }}>{notice}</div>}
+        {notice && <div style={{ ...styles.success, background: c.accentLight, color: c.textPrimary, borderRadius: r.md, padding: `${s.md}px ${s.controlX}px` }}>{notice}</div>}
         {error && <div style={styles.error}>{error}</div>}
 
-        <div style={{ ...styles.messages, background: c.pageBg, borderColor: c.border }}>
+        <div style={{ ...styles.messages, background: c.pageBg, borderColor: c.border, borderRadius: r.lg, padding: s.lg, gap: s.lg }}>
           {messages.length === 0 ? (
             <div style={{ color: c.textMuted, fontSize: 14, lineHeight: 1.7 }}>
               可以直接问：
@@ -162,23 +246,23 @@ export const DeepChatModal = ({ onClose, onOpenAiConfig, embedded = false }: Dee
               “帮我总结公开笔记里关于产品方向的线索”
             </div>
           ) : messages.map((message, index) => (
-            <div key={`${message.role}-${index}`} style={{ ...styles.messageCard, background: message.role === 'assistant' ? c.cardBg : c.accentLight }}>
+            <div key={`${message.role}-${index}`} style={{ ...styles.messageCard, background: message.role === 'assistant' ? c.cardBg : c.accentLight, borderRadius: r.lg, padding: s.lg }}>
               <div style={{ ...styles.messageRole, color: c.textMuted }}>{message.role === 'assistant' ? '知识库' : '我'}</div>
               <div style={{ color: c.textPrimary, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{message.content}</div>
               {message.sources && message.sources.length > 0 && (
-                <div style={styles.sourcesWrap}>
+                <div style={{ ...styles.sourcesWrap, gap: s.md, marginTop: s.lg }}>
                   {message.sources.map((source, sourceIndex) => (
-                    <button
+                    <Button
                       key={`${source.memoId}-${source.slug}`}
-                      type="button"
-                      style={{ ...styles.sourceCard, borderColor: c.borderMedium, background: c.pageBg, color: c.textPrimary }}
+                      variant="ghost"
+                      style={{ ...styles.sourceCard, display: 'block', width: '100%', whiteSpace: 'normal', borderColor: c.borderMedium, background: c.pageBg, color: c.textPrimary, borderRadius: r.md, padding: `${s.md}px ${s.inputX}px`, transition: i.transition }}
                       onClick={() => setActiveSource(source)}
                     >
                       <div style={{ fontSize: 12, fontWeight: 600, color: c.textSecondary }}>
                         资料{sourceIndex + 1} · {source.displayDate} · {source.slug}
                       </div>
                       <div style={{ fontSize: 12, color: c.textMuted, marginTop: 4 }}>{source.snippet}</div>
-                    </button>
+                    </Button>
                   ))}
                 </div>
               )}
@@ -186,20 +270,22 @@ export const DeepChatModal = ({ onClose, onOpenAiConfig, embedded = false }: Dee
           ))}
         </div>
 
-        <div style={styles.inputWrap}>
+        <div style={{ ...styles.inputWrap, gap: s.lg }}>
           <textarea
             placeholder="基于我的笔记库，问点更深的问题..."
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
             onKeyDown={handleComposerKeyDown}
-            style={{ ...styles.textarea, background: c.pageBg, borderColor: c.borderMedium, color: c.textPrimary }}
+            style={{ ...styles.textarea, background: c.pageBg, borderColor: c.borderMedium, color: c.textPrimary, borderRadius: r.md, padding: s.inputX, boxShadow: questionFocused ? i.focusRing : 'none', transition: i.transition }}
             rows={4}
+            onFocus={() => setQuestionFocused(true)}
+            onBlur={() => setQuestionFocused(false)}
           />
-          <button type="button" style={{ ...styles.primaryButton, minWidth: 88, opacity: loading ? 0.7 : 1 }} onClick={handleSend} disabled={loading}>
+          <Button variant="primary" style={{ minWidth: 88 }} onClick={handleSend} disabled={loading}>
             {loading ? '思考中...' : '发送'}
-          </button>
+          </Button>
         </div>
-      </div>
+    </section>
   );
 
   if (embedded) {
@@ -221,21 +307,21 @@ export const DeepChatModal = ({ onClose, onOpenAiConfig, embedded = false }: Dee
 
 const SourceMemoPreview = ({ source, onClose }: { source: KnowledgeSource; onClose: () => void }) => {
   const { isDark } = useTheme();
-  const c = colors(isDark);
+  const { colors: c, spacing: s, radius: r, shadow } = designTokens(isDark);
   const { data, isLoading } = useQuery({
     queryKey: ['deep-chat-source-memo', source.slug],
     queryFn: () => fetchAuthorMemo(source.slug),
   });
 
   return (
-    <div style={styles.previewOverlay} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div style={{ ...styles.previewCard, background: c.cardBg, borderColor: c.border }}>
-        <div style={styles.header}>
+    <div style={{ ...styles.previewOverlay, background: c.overlay }} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div style={{ ...styles.previewCard, background: c.cardBg, borderColor: c.borderMedium, borderRadius: r.xl, padding: s['2xl'], gap: s.lg, boxShadow: shadow.panel }}>
+        <div style={{ ...styles.header, gap: s.lg }}>
           <div>
             <h3 style={{ margin: 0, fontSize: 17, color: c.textPrimary }}>{source.displayDate}</h3>
             <p style={{ margin: '6px 0 0', fontSize: 12, color: c.textMuted }}>{source.slug}</p>
           </div>
-          <button type="button" onClick={onClose} style={{ ...styles.closeButton, color: c.textTertiary }}>×</button>
+          <IconButton label="关闭资料详情" onClick={onClose} style={{ fontSize: 20, lineHeight: 1, color: c.textTertiary }}>×</IconButton>
         </div>
         {isLoading ? (
           <div style={{ color: c.textMuted, fontSize: 14 }}>加载中...</div>
@@ -243,14 +329,17 @@ const SourceMemoPreview = ({ source, onClose }: { source: KnowledgeSource; onClo
           <div style={{ color: c.textMuted, fontSize: 14 }}>笔记不存在</div>
         ) : (
           <>
-            <div style={styles.previewTags}>
+            <div style={{ ...styles.previewTags, gap: s.md }}>
               {data.memo.tags.map((tag) => (
                 <span key={tag} style={{ color: c.tagColor, fontSize: 13, fontWeight: 500 }}>#{tag}</span>
               ))}
             </div>
-            <div style={{ ...styles.previewBody, background: c.pageBg, borderColor: c.borderMedium }}>
-              <ReactMarkdown
-                components={{
+            <div style={{ ...styles.previewBody, background: c.pageBg, borderColor: c.borderMedium, borderRadius: r.md, padding: `${s.xl}px ${s['2xl']}px` }}>
+              {shouldRenderMarkdown(stripTagSyntax(data.memo.content)) ? (
+                <Suspense fallback={<p style={{ lineHeight: 1.7, fontSize: 14, color: c.textSecondary, margin: '0 0 8px', whiteSpace: 'pre-wrap' }}>{stripHtmlTags(stripTagSyntax(data.memo.content))}</p>}>
+                  <LazySafeMarkdown
+                    content={stripTagSyntax(data.memo.content)}
+                    components={{
                   img: ({ src = '', alt = '' }) => <img src={src} alt={alt || 'memo image'} style={{ maxWidth: '100%', borderRadius: 8, margin: '8px 0' }} />,
                   p: ({ children }) => <p style={{ lineHeight: 1.7, fontSize: 14, color: c.textSecondary, margin: '0 0 8px', whiteSpace: 'pre-wrap' }}>{children}</p>,
                   h1: ({ children }) => <p style={{ lineHeight: 1.7, fontSize: 14, color: c.textSecondary, margin: '0 0 8px' }}>{children}</p>,
@@ -260,10 +349,12 @@ const SourceMemoPreview = ({ source, onClose }: { source: KnowledgeSource; onClo
                   code: ({ children, className }) => className
                     ? <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace', fontSize: 13 }}>{children}</code>
                     : <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace', fontSize: 13, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', padding: '2px 5px', borderRadius: 3 }}>{children}</code>,
-                }}
-              >
-                {stripTagSyntax(data.memo.content)}
-              </ReactMarkdown>
+                    }}
+                  />
+                </Suspense>
+              ) : (
+                <p style={{ lineHeight: 1.7, fontSize: 14, color: c.textSecondary, margin: '0 0 8px', whiteSpace: 'pre-wrap' }}>{stripTagSyntax(data.memo.content)}</p>
+              )}
             </div>
           </>
         )}
@@ -311,36 +402,10 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'flex-start',
     gap: 12,
   },
-  closeButton: {
-    border: 'none',
-    background: 'transparent',
-    cursor: 'pointer',
-    fontSize: 24,
-    lineHeight: 1,
-    padding: 0,
-  },
   toolbar: {
     display: 'flex',
     gap: 10,
     flexWrap: 'wrap',
-  },
-  primaryButton: {
-    border: 'none',
-    borderRadius: 10,
-    background: '#31d266',
-    color: '#fff',
-    padding: '10px 14px',
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-  secondaryButton: {
-    border: '1px solid',
-    borderRadius: 10,
-    padding: '10px 14px',
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
   },
   banner: {
     border: '1px solid',

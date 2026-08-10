@@ -20,6 +20,7 @@ describe('MemoComposer hierarchical tags', () => {
         content: '记录一下 #平台/小红书 #类别/知识储备',
         visibility: 'public',
         displayDate: '2026-03-25',
+        client_id: expect.any(String),
       });
     });
   });

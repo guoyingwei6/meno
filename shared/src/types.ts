@@ -22,6 +22,8 @@ export interface MemoSummary {
   slug: string;
   content: string;
   excerpt: string;
+  contentTruncated?: boolean;
+  contentCharacterCount?: number;
   visibility: MemoVisibility;
   displayDate: string;
   createdAt: string;

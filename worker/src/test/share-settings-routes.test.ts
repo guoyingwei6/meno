@@ -4,6 +4,7 @@ import { createTestEnv } from './route-test-helpers';
 
 const authorHeaders = {
   Cookie: 'meno_session=valid-author-session',
+  Origin: 'https://meno.guoyingwei.top',
 };
 
 describe('share token and settings routes', () => {
@@ -65,5 +66,33 @@ describe('share token and settings routes', () => {
         defaultVisibility: 'public',
       },
     });
+
+    const publicResponse = await app.request('http://localhost/api/public/settings', {}, env);
+    expect(publicResponse.status).toBe(200);
+    expect(publicResponse.headers.get('Cache-Control')).toContain('s-maxage=15');
+    expect(await publicResponse.json()).toEqual({ settings: { siteTitle: '我的 Meno' } });
+  });
+
+  it('supports optional share expiry and rejects expired tokens', async () => {
+    const env = await createTestEnv();
+    const invalid = await app.request('http://localhost/api/dashboard/memos/1/share?expiresInHours=0', {
+      method: 'POST',
+      headers: authorHeaders,
+    }, env);
+    expect(invalid.status).toBe(400);
+
+    const createResponse = await app.request('http://localhost/api/dashboard/memos/1/share?expiresInHours=1', {
+      method: 'POST',
+      headers: authorHeaders,
+    }, env);
+    expect(createResponse.status).toBe(200);
+    const payload = await createResponse.json() as { share: { token: string; expiresAt: string | null } };
+    expect(payload.share.expiresAt).toEqual(expect.any(String));
+
+    await env.DB.prepare('UPDATE memo_shares SET expires_at = ? WHERE token = ?')
+      .bind(new Date(Date.now() - 60_000).toISOString(), payload.share.token)
+      .run();
+    const expired = await app.request(`http://localhost/api/public/shares/${payload.share.token}`, {}, env);
+    expect(expired.status).toBe(404);
   });
 });

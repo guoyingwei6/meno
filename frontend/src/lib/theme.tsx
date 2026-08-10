@@ -51,6 +51,39 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   return <ThemeContext.Provider value={{ mode, setMode, isDark }}>{children}</ThemeContext.Provider>;
 };
 
+/* ---------- layout and interaction tokens ---------- */
+export const spacing = {
+  none: 0,
+  xs: 4,
+  sm: 6,
+  md: 8,
+  lg: 12,
+  xl: 16,
+  '2xl': 20,
+  '3xl': 24,
+  compactY: 5,
+  field: 7,
+  inputX: 10,
+  controlX: 14,
+  fieldBlock: 15,
+} as const;
+
+export const radius = {
+  sm: 6,
+  md: 8,
+  lg: 12,
+  xl: 14,
+  pill: 999,
+} as const;
+
+export const interaction = (dark: boolean) => ({
+  transition: 'background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease',
+  focusRing: dark ? '0 0 0 3px rgba(49, 210, 102, 0.28)' : '0 0 0 3px rgba(49, 210, 102, 0.22)',
+  activeSurface: dark ? 'rgba(58,168,100,0.16)' : 'rgba(58,168,100,0.1)',
+  hoverSurface: dark ? 'rgba(232,232,232,0.08)' : 'rgba(17,17,17,0.04)',
+  disabledOpacity: 0.5,
+});
+
 /* ---------- color tokens ---------- */
 export const colors = (dark: boolean) => ({
   // backgrounds
@@ -82,4 +115,18 @@ export const colors = (dark: boolean) => ({
   overlay: dark ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.3)',
   shadow: dark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.08)',
   countColor: dark ? '#888' : '#bbb',
+});
+
+export const shadow = (dark: boolean) => ({
+  none: 'none',
+  subtle: `0 4px 16px ${colors(dark).shadow}`,
+  panel: '0 16px 48px rgba(0, 0, 0, 0.18)',
+});
+
+export const designTokens = (dark: boolean) => ({
+  colors: colors(dark),
+  spacing,
+  radius,
+  shadow: shadow(dark),
+  interaction: interaction(dark),
 });

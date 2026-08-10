@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { MemoSummary } from '../../../shared/src/types';
-import { createMemo, getAuthorMemoById, listAuthorMemos, trashMemo, updateMemo } from '../db/memo-repository';
+import { createMemoWithOutcome, getAuthorMemoById, listAuthorMemos, trashMemo, updateMemo } from '../db/memo-repository';
 import type { WorkerBindings } from '../db/client';
 import { ContractError, parseCreateMemoRequest, parseUpdateMemoRequest, parseVisibilityFilter } from '../contracts/v1';
 import { isApiKeyValid } from '../lib/auth';
 import { createMemoSlug } from '../lib/slug';
-import { removeMemoFromKnowledgeBase, syncMemoToKnowledgeBase } from '../lib/ai-rag';
 import { markMemoImageOcrRemovedByMemo, syncMemoImageOcrTasks } from '../db/memo-image-ocr-repository';
+import { enqueueMemoKnowledgeSync, scheduleMemoKnowledgeSync } from '../lib/knowledge-sync-queue';
 
 export const v1Routes = new Hono<{ Bindings: WorkerBindings }>();
 
@@ -23,11 +23,29 @@ const parseMemoId = (value: string) => {
   return Number.isInteger(id) && id > 0 ? id : null;
 };
 
-const waitForKnowledgeBase = async (task: Promise<void>) => {
+const waitForBackgroundTask = async (task: Promise<void>) => {
   try {
     await task;
   } catch (error) {
-    console.error('Knowledge base sync failed', error);
+    console.error('V1 background task failed', error);
+  }
+};
+
+const getWaitUntil = (c: Context<{ Bindings: WorkerBindings }>) => {
+  try {
+    return c.executionCtx?.waitUntil?.bind(c.executionCtx) ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const scheduleBackground = (c: Context<{ Bindings: WorkerBindings }>, task: Promise<void>) => {
+  const safeTask = waitForBackgroundTask(task);
+  const waitUntil = getWaitUntil(c);
+  if (waitUntil) {
+    waitUntil(safeTask);
+  } else {
+    void safeTask;
   }
 };
 
@@ -35,6 +53,7 @@ v1Routes.use('/*', async (c, next) => {
   if (!isApiKeyValid(c.env, c.req.raw)) {
     return c.json({ message: 'Invalid API token' }, 401);
   }
+  c.header('Cache-Control', 'private, no-store');
   await next();
 });
 
@@ -53,17 +72,22 @@ v1Routes.get('/memos', async (c) => {
 v1Routes.post('/memos', async (c) => {
   try {
     const input = parseCreateMemoRequest(await c.req.json());
-    const memo = await createMemo(c.env.DB, {
+    const outcome = await createMemoWithOutcome(c.env.DB, {
       slug: createMemoSlug(),
       content: input.content,
       visibility: input.visibility,
       displayDate: input.displayDate,
+      clientId: input.client_id,
     });
+    const memo = outcome.memo;
 
-    await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility);
-    await waitForKnowledgeBase(syncMemoToKnowledgeBase(c.env, memo.id));
+    if (outcome.created) {
+      scheduleBackground(c, syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility));
+    }
+    await enqueueMemoKnowledgeSync(c.env.DB, memo.id);
+    scheduleMemoKnowledgeSync(c.env, memo.id, getWaitUntil(c) ?? undefined);
 
-    return c.json({ memo }, 201);
+    return c.json({ memo }, outcome.created ? 201 : 200);
   } catch (error) {
     return jsonError(c, error);
   }
@@ -95,10 +119,11 @@ v1Routes.patch('/memos/:id', async (c) => {
       return c.json({ message: 'Memo not found' }, 404);
     }
 
-    if (input.content !== undefined) {
-      await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility);
+    if (input.content !== undefined || input.visibility !== undefined) {
+      scheduleBackground(c, syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility));
     }
-    await waitForKnowledgeBase(syncMemoToKnowledgeBase(c.env, memo.id));
+    await enqueueMemoKnowledgeSync(c.env.DB, memo.id);
+    scheduleMemoKnowledgeSync(c.env, memo.id, getWaitUntil(c) ?? undefined);
 
     return c.json({ memo });
   } catch (error) {
@@ -117,8 +142,9 @@ v1Routes.delete('/memos/:id', async (c) => {
     return c.json({ message: 'Memo not found' }, 404);
   }
 
-  await markMemoImageOcrRemovedByMemo(c.env.DB, id);
-  await waitForKnowledgeBase(removeMemoFromKnowledgeBase(c.env, id));
+  scheduleBackground(c, markMemoImageOcrRemovedByMemo(c.env.DB, id));
+  await enqueueMemoKnowledgeSync(c.env.DB, id);
+  scheduleMemoKnowledgeSync(c.env, id, getWaitUntil(c) ?? undefined);
 
   return c.json({ success: true });
 });

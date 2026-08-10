@@ -1,7 +1,7 @@
 import type { AiChatMessage, AiConfig, KnowledgeSource, MemoSummary } from '../../../shared/src/types';
 import { getAuthorMemoById, listKnowledgeBaseMemos, searchKnowledgeBaseMemosByTerms } from '../db/memo-repository';
-import { getMemoOcrText } from '../db/memo-image-ocr-repository';
 import type { WorkerBindings } from '../db/client';
+import { getPublicMemoOcrTextForModel, isPublicMemoForModel, sanitizeMemoContentForModel } from './model-privacy';
 
 const EMBEDDING_MODEL = '@cf/baai/bge-m3';
 const INDEX_BATCH_SIZE = 20;
@@ -84,6 +84,13 @@ const buildIndexText = (memo: MemoSummary, ocrText = '') => {
   ].filter(Boolean).join('\n');
 };
 
+const buildModelIndexText = async (env: WorkerBindings, memo: MemoSummary): Promise<string> => (
+  buildIndexText(
+    { ...memo, content: await sanitizeMemoContentForModel(env, memo.content) },
+    await getPublicMemoOcrTextForModel(env, memo.id),
+  )
+);
+
 const parseEmbedding = (payload: unknown): number[][] => {
   const data = (payload as EmbeddingResponse)?.data;
   if (!Array.isArray(data) || !Array.isArray(data[0])) {
@@ -140,9 +147,13 @@ const coerceSource = async (env: WorkerBindings, match: VectorMatch): Promise<Kn
   }
 
   const memo = await getAuthorMemoById(env.DB, memoId);
-  if (!memo || memo.deletedAt) {
+  // Vectorize may still contain a stale record after a visibility change.
+  // Never trust vector metadata as an authorization boundary.
+  if (!isPublicMemoForModel(memo)) {
     return null;
   }
+
+  const sanitizedContent = await sanitizeMemoContentForModel(env, memo.content);
 
   return {
     memoId,
@@ -151,42 +162,71 @@ const coerceSource = async (env: WorkerBindings, match: VectorMatch): Promise<Kn
     displayDate: memo.displayDate,
     score: typeof match.score === 'number' ? match.score : undefined,
     tags: memo.tags,
-    snippet: createSnippet(memo.content),
+    snippet: createSnippet(sanitizedContent),
   };
 };
 
 export const indexKnowledgeBase = async (env: WorkerBindings): Promise<number> => {
   ensureKnowledgeBindings(env);
   const memos = await listKnowledgeBaseMemos(env.DB);
+  let indexed = 0;
 
   for (let i = 0; i < memos.length; i += INDEX_BATCH_SIZE) {
     const batch = memos.slice(i, i + INDEX_BATCH_SIZE);
-    const texts = await Promise.all(batch.map(async (memo) => buildIndexText(memo, await getMemoOcrText(env.DB, memo.id))));
-    const embeddings = await embedTexts(env, texts);
-    await env.VECTORIZE!.upsert(batch.map((memo, idx) => toVectorRecord(memo, embeddings[idx])));
+    // Re-read the current rows before building model input. The initial list
+    // can become stale while a queued index operation is running.
+    const currentBatch = await Promise.all(batch.map((memo) => getAuthorMemoById(env.DB, memo.id)));
+    const publicBatch = currentBatch.filter((memo): memo is NonNullable<typeof memo> => (
+      isPublicMemoForModel(memo) && memo.content.trim().length > 0
+    ));
+    if (publicBatch.length === 0) {
+      continue;
+    }
+
+    const prepared = await Promise.all(publicBatch.map(async (memo) => ({
+      memo,
+      text: await buildModelIndexText(env, memo),
+    })));
+    // The model boundary is time-sensitive: a visibility change can occur
+    // while OCR text and asset access are being resolved. Re-read just before
+    // handing the batch to Workers AI and drop anything no longer public.
+    const eligible = await Promise.all(prepared.map(async (entry) => {
+      const current = await getAuthorMemoById(env.DB, entry.memo.id);
+      return isPublicMemoForModel(current) ? { ...entry, memo: current } : null;
+    }));
+    const ready = eligible.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+    if (ready.length === 0) {
+      continue;
+    }
+
+    const embeddings = await embedTexts(env, ready.map((entry) => entry.text));
+    await env.VECTORIZE!.upsert(ready.map((entry, idx) => toVectorRecord(entry.memo, embeddings[idx])));
+    indexed += ready.length;
   }
 
-  return memos.length;
+  return indexed;
 };
 
 export const syncMemoToKnowledgeBase = async (env: WorkerBindings, memoId: number): Promise<void> => {
-  if (!env.AI || !env.VECTORIZE) {
+  if (!env.VECTORIZE) {
     return;
   }
 
   const memo = await getAuthorMemoById(env.DB, memoId);
-  if (!memo || memo.deletedAt) {
+  if (!isPublicMemoForModel(memo) || !memo.content.trim()) {
     await env.VECTORIZE.deleteByIds?.([String(memoId)]);
     return;
   }
 
-  if (memo.visibility !== 'public') {
+  const text = await buildModelIndexText(env, memo);
+  const current = await getAuthorMemoById(env.DB, memo.id);
+  if (!isPublicMemoForModel(current) || !current.content.trim()) {
     await env.VECTORIZE.deleteByIds?.([String(memoId)]);
     return;
   }
 
-  const [embedding] = await embedTexts(env, [buildIndexText(memo, await getMemoOcrText(env.DB, memo.id))]);
-  await env.VECTORIZE.upsert([toVectorRecord(memo, embedding)]);
+  const [embedding] = await embedTexts(env, [text]);
+  await env.VECTORIZE.upsert([toVectorRecord(current, embedding)]);
 };
 
 export const removeMemoFromKnowledgeBase = async (env: WorkerBindings, memoId: number): Promise<void> => {
@@ -284,16 +324,15 @@ export const chatWithKnowledgeBase = async (
 
   const keywords = extractKeywords(trimmed);
   const lexicalMemos = await searchKnowledgeBaseMemosByTerms(env.DB, keywords);
-  const lexicalMatches: KnowledgeSource[] = lexicalMemos
-    .map((memo) => ({
+  const lexicalMatches: KnowledgeSource[] = (await Promise.all(lexicalMemos.map(async (memo) => ({
       memoId: memo.id,
       slug: memo.slug,
       visibility: memo.visibility,
       displayDate: memo.displayDate,
       score: lexicalScore(memo, keywords),
       tags: memo.tags,
-      snippet: createSnippet(memo.content),
-    }))
+      snippet: createSnippet(await sanitizeMemoContentForModel(env, memo.content)),
+    }))))
     .filter((memo) => (memo.score ?? 0) > 0)
     .slice(0, SQL_TOP_K);
 

@@ -8,4 +8,6 @@ coverage/
 .dev.vars
 wrangler.local.toml
 wrangler.ci.toml
+wrangler.deploy.toml
 .omx/
+.playwright-mcp/

@@ -1,16 +1,21 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-export default defineConfig({
-    plugins: [react()],
-    build: {
-        rollupOptions: {
-            output: {
-                manualChunks: {
-                    markdown: ['react-markdown', 'rehype-raw'],
-                },
-            },
+
+const preserveRocketLoaderOptOut = {
+    name: 'preserve-rocket-loader-opt-out',
+    transformIndexHtml: {
+        order: 'post',
+        handler(html) {
+            return html.replace(
+                /<script type="module" crossorigin src="([^"]+)"><\/script>/,
+                '<script data-cfasync="false" type="module" crossorigin src="$1"></script>',
+            );
         },
     },
+};
+
+export default defineConfig({
+    plugins: [react(), preserveRocketLoaderOptOut],
     test: {
         environment: 'jsdom',
         globals: true,

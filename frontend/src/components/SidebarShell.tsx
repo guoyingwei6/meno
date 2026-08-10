@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { loginUrl } from '../lib/runtime-config';
 import type { TagTreeResult } from '../lib/tag-tree';
-import { useTheme, colors } from '../lib/theme';
+import { designTokens, useTheme } from '../lib/theme';
+import { Button } from './ui/Button';
+import { IconButton } from './ui/IconButton';
+import { MenuItem, MenuSurface } from './ui/Menu';
 
 interface DateCount {
   date: string;
@@ -15,6 +18,7 @@ export interface MemoFilters {
 }
 
 interface SidebarShellProps {
+  siteTitle?: string;
   memoCount: number;
   tagCount: number;
   streakDays?: number;
@@ -58,10 +62,12 @@ const IconCell = ({ icon, expanded, onToggle }: { icon: string; expanded: boolea
 
 const getMonthDays = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
 const getFirstDayOfWeek = (year: number, month: number) => new Date(year, month, 1).getDay();
+const getTagMenuId = (tag: string) => `sidebar-tag-menu-${encodeURIComponent(tag)}`;
+const getTagMenuTriggerId = (tag: string) => `sidebar-tag-menu-trigger-${encodeURIComponent(tag)}`;
 
-export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate = null, calendarDays = [], activeView = 'all', activeTag = null, filters = {}, tagTree = { groups: [], flat: [] }, hasOnThisDay = false, style, onSelectView, onSelectDate, onSelectTag, onChangeFilters, authenticated, githubLogin, onRenameTag, onDeleteTag, onLogout }: SidebarShellProps) => {
+export const SidebarShell = ({ siteTitle = 'Meno', memoCount, tagCount, streakDays = 0, activeDate = null, calendarDays = [], activeView = 'all', activeTag = null, filters = {}, tagTree = { groups: [], flat: [] }, hasOnThisDay = false, style, onSelectView, onSelectDate, onSelectTag, onChangeFilters, authenticated, githubLogin, onRenameTag, onDeleteTag, onLogout }: SidebarShellProps) => {
   const { isDark } = useTheme();
-  const c = colors(isDark);
+  const { colors: c, spacing: s, radius: r, shadow, interaction: i } = designTokens(isDark);
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -118,6 +124,23 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
   const tagFilterLabel = filters.hasTags === true ? '有标签' : filters.hasTags === false ? '无标签' : '有/无标签';
   const imgLabel = filters.hasImages === true ? '有图片' : filters.hasImages === false ? '无图片' : '有/无图片';
 
+  const focusTagMenuTrigger = (tag: string) => {
+    document.getElementById(getTagMenuTriggerId(tag))?.focus();
+  };
+
+  const closeRenameDialog = () => {
+    const previousTag = renameTag;
+    setRenameTag(null);
+    setRenameValue('');
+    if (previousTag) focusTagMenuTrigger(previousTag);
+  };
+
+  const closeDeleteDialog = () => {
+    const previousTag = deleteConfirm;
+    setDeleteConfirm(null);
+    if (previousTag) focusTagMenuTrigger(previousTag);
+  };
+
   useEffect(() => {
     if (!tagMenuOpen) {
       return undefined;
@@ -135,31 +158,32 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
   }, [tagMenuOpen]);
 
   useEffect(() => {
+    if (!tagMenuOpen) {
+      return undefined;
+    }
+
+    const firstMenuItem = document.getElementById(getTagMenuId(tagMenuOpen))?.querySelector<HTMLElement>('[role="menuitem"]');
+    firstMenuItem?.focus();
+    return undefined;
+  }, [tagMenuOpen]);
+
+  useEffect(() => {
     if (!renameTag && !deleteConfirm) {
       return undefined;
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setRenameTag(null);
-        setRenameValue('');
-        setDeleteConfirm(null);
+        event.preventDefault();
+        if (renameTag) closeRenameDialog();
+        else closeDeleteDialog();
         return;
-      }
-
-      if (event.key === 'Enter' && renameTag) {
-        const nextTag = renameValue.trim();
-        if (nextTag && nextTag !== renameTag) {
-          onRenameTag?.(renameTag, nextTag);
-          setRenameTag(null);
-          setRenameValue('');
-        }
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [deleteConfirm, onRenameTag, renameTag, renameValue]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [deleteConfirm, renameTag]);
 
   const openRenameDialog = (tag: string) => {
     setTagMenuOpen(null);
@@ -182,8 +206,7 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
     }
 
     onRenameTag?.(renameTag, nextTag);
-    setRenameTag(null);
-    setRenameValue('');
+    closeRenameDialog();
   };
 
   const confirmDelete = (deleteNotes: boolean) => {
@@ -192,7 +215,7 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
     }
 
     onDeleteTag?.(deleteConfirm, deleteNotes);
-    setDeleteConfirm(null);
+    closeDeleteDialog();
   };
 
   const renderTagActions = (tag: string) => {
@@ -201,24 +224,72 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
     }
 
     const isOpen = tagMenuOpen === tag;
+    const menuId = getTagMenuId(tag);
+    const triggerId = getTagMenuTriggerId(tag);
     return (
       <div data-tag-menu-root="true" style={styles.tagMenuWrap}>
-        <button
-          type="button"
+        <IconButton
           aria-label={`管理标签 ${tag}`}
-          style={{ ...styles.tagMenuButton, color: c.textMuted }}
+          id={triggerId}
+          data-tag-menu-trigger="true"
+          aria-haspopup="menu"
+          aria-expanded={isOpen}
+          aria-controls={isOpen ? menuId : undefined}
+          label={`管理标签 ${tag}`}
+          title={`管理标签 ${tag}`}
+          style={{ ...styles.tagMenuButton, color: c.textMuted, borderRadius: r.sm, transition: i.transition }}
           onClick={(event) => {
             event.stopPropagation();
             setTagMenuOpen((current) => (current === tag ? null : tag));
           }}
         >
           ···
-        </button>
+        </IconButton>
         {isOpen && (
-          <div style={{ ...styles.tagMenuDropdown, background: c.cardBg, borderColor: c.borderMedium, boxShadow: isDark ? '0 12px 24px rgba(0,0,0,0.35)' : '0 12px 24px rgba(0,0,0,0.12)' }}>
-            <button type="button" style={{ ...styles.tagMenuItem, color: c.textPrimary }} onClick={(event) => { event.stopPropagation(); openRenameDialog(tag); }}>重命名</button>
-            <button type="button" style={{ ...styles.tagMenuItem, color: '#e53e3e' }} onClick={(event) => { event.stopPropagation(); openDeleteDialog(tag); }}>删除标签</button>
-          </div>
+          <MenuSurface
+            id={menuId}
+            label={`${tag} 标签操作`}
+            style={{ ...styles.tagMenuDropdown, background: c.cardBg, borderColor: c.borderMedium, borderRadius: r.lg, padding: s.xs, boxShadow: shadow.subtle }}
+            onKeyDown={(event) => {
+              const menuItems = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+              const currentIndex = menuItems.indexOf(document.activeElement as HTMLElement);
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                setTagMenuOpen(null);
+                focusTagMenuTrigger(tag);
+                return;
+              }
+              if (event.key === 'Tab') {
+                setTagMenuOpen(null);
+                return;
+              }
+              if (menuItems.length === 0 || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+                return;
+              }
+              event.preventDefault();
+              const nextIndex = event.key === 'Home'
+                ? 0
+                : event.key === 'End'
+                  ? menuItems.length - 1
+                  : (currentIndex + (event.key === 'ArrowDown' ? 1 : -1) + menuItems.length) % menuItems.length;
+              menuItems[nextIndex]?.focus();
+            }}
+          >
+            <MenuItem
+              style={{ ...styles.tagMenuItem, color: c.textPrimary, borderRadius: r.md, padding: `${s.md}px ${s.inputX}px`, transition: i.transition }}
+              onClick={(event) => { event.stopPropagation(); openRenameDialog(tag); }}
+            >
+              重命名
+            </MenuItem>
+            <MenuItem
+              tone="danger"
+              style={{ ...styles.tagMenuItem, color: c.danger, borderRadius: r.md, padding: `${s.md}px ${s.inputX}px`, transition: i.transition }}
+              onClick={(event) => { event.stopPropagation(); openDeleteDialog(tag); }}
+            >
+              删除标签
+            </MenuItem>
+          </MenuSurface>
         )}
       </div>
     );
@@ -228,7 +299,7 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
     <aside style={{ ...styles.sidebar, background: c.sidebarBg, borderRightColor: c.border, color: c.textPrimary, ...style }}>
       <div>
         <div style={styles.brandRow}>
-          <h1 style={styles.brand}>Meno</h1>
+          <h1 style={styles.brand}>{siteTitle || 'Meno'}</h1>
           {authenticated && githubLogin && (
             <div style={styles.accountRow}>
               <span style={{ fontSize: 13, color: c.textMuted, fontWeight: 500 }}>@{githubLogin}</span>
@@ -406,35 +477,97 @@ export const SidebarShell = ({ memoCount, tagCount, streakDays = 0, activeDate =
       </div>
 
       {renameTag && (
-        <div style={{ ...styles.modalOverlay, background: isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(17, 24, 39, 0.35)' }} onClick={() => { setRenameTag(null); setRenameValue(''); }}>
-          <div style={{ ...styles.modalCard, background: c.cardBg, borderColor: c.border }} onClick={(event) => event.stopPropagation()}>
-            <h3 style={{ ...styles.modalTitle, color: c.textPrimary }}>重命名标签</h3>
-            <p style={{ ...styles.modalBody, color: c.textMuted }}>将标签“{renameTag}”重命名为：</p>
+        <div
+          role="presentation"
+          style={{ ...styles.modalOverlay, background: c.overlay }}
+          onClick={(event) => { if (event.target === event.currentTarget) closeRenameDialog(); }}
+        >
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sidebar-rename-tag-title"
+            aria-describedby="sidebar-rename-tag-description"
+            style={{ ...styles.modalCard, background: c.cardBg, borderColor: c.border, borderRadius: r.xl, padding: s['2xl'], boxShadow: shadow.panel, color: c.textPrimary }}
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={(event) => { event.preventDefault(); confirmRename(); }}
+          >
+            <h2 id="sidebar-rename-tag-title" style={{ ...styles.modalTitle, color: c.textPrimary }}>重命名标签</h2>
+            <p id="sidebar-rename-tag-description" style={{ ...styles.modalBody, color: c.textMuted }}>将标签“{renameTag}”重命名为：</p>
             <input
+              id="sidebar-rename-tag-input"
+              aria-label="新标签名称"
               autoFocus
               value={renameValue}
               onChange={(event) => setRenameValue(event.target.value)}
-              style={{ ...styles.modalInput, background: isDark ? '#141414' : '#fff', borderColor: c.borderMedium, color: c.textPrimary }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  confirmRename();
+                }
+              }}
+              style={{ ...styles.modalInput, background: c.inputBg, borderColor: c.borderMedium, borderRadius: r.md, padding: `${s.md}px ${s.inputX}px`, color: c.textPrimary, transition: i.transition }}
             />
-            <div style={styles.modalActions}>
-              <button type="button" style={{ ...styles.modalButton, background: c.cardBg, borderColor: c.borderMedium, color: c.textSecondary }} onClick={() => { setRenameTag(null); setRenameValue(''); }}>取消</button>
-              <button type="button" style={{ ...styles.modalButton, background: '#31d266', borderColor: '#31d266', color: '#fff' }} onClick={confirmRename}>确认</button>
+            <div style={{ ...styles.modalActions, gap: s.md, marginTop: s.xl }}>
+              <Button
+                variant="secondary"
+                style={{ ...styles.modalButton, borderColor: c.borderMedium, borderRadius: r.md, padding: `${s.md}px ${s.controlX}px`, color: c.textSecondary, background: c.cardBg, transition: i.transition }}
+                onClick={closeRenameDialog}
+              >
+                取消
+              </Button>
+              <Button
+                variant="primary"
+                type="submit"
+                style={{ ...styles.modalButton, borderColor: c.accent, borderRadius: r.md, padding: `${s.md}px ${s.controlX}px`, color: c.textInverse, transition: i.transition }}
+              >
+                确认
+              </Button>
             </div>
-          </div>
+          </form>
         </div>
       )}
 
       {deleteConfirm && (
-        <div style={{ ...styles.modalOverlay, background: isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(17, 24, 39, 0.35)' }} onClick={() => setDeleteConfirm(null)}>
-          <div style={{ ...styles.modalCard, background: c.cardBg, borderColor: c.border }} onClick={(event) => event.stopPropagation()}>
-            <h3 style={{ ...styles.modalTitle, color: c.textPrimary }}>删除标签</h3>
-            <p style={{ ...styles.modalBody, color: c.textMuted }}>选择如何处理“{deleteConfirm}”及其子标签。</p>
-            <div style={styles.modalStack}>
-              <button type="button" style={{ ...styles.modalActionButton, background: c.cardBg, borderColor: c.borderMedium, color: c.textPrimary }} onClick={() => confirmDelete(false)}>仅删除标签（保留笔记）</button>
-              <button type="button" style={{ ...styles.modalActionButton, background: '#e53e3e', borderColor: '#e53e3e', color: '#fff' }} onClick={() => confirmDelete(true)}>删除标签和所有相关笔记</button>
-              <button type="button" style={{ ...styles.modalActionButton, background: isDark ? '#141414' : '#fff', borderColor: c.borderMedium, color: c.textSecondary }} onClick={() => setDeleteConfirm(null)}>取消</button>
+        <div
+          role="presentation"
+          style={{ ...styles.modalOverlay, background: c.overlay }}
+          onClick={(event) => { if (event.target === event.currentTarget) closeDeleteDialog(); }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sidebar-delete-tag-title"
+            aria-describedby="sidebar-delete-tag-description"
+            style={{ ...styles.modalCard, background: c.cardBg, borderColor: c.border, borderRadius: r.xl, padding: s['2xl'], boxShadow: shadow.panel, color: c.textPrimary }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="sidebar-delete-tag-title" style={{ ...styles.modalTitle, color: c.textPrimary }}>删除标签</h2>
+            <p id="sidebar-delete-tag-description" style={{ ...styles.modalBody, color: c.textMuted }}>选择如何处理“{deleteConfirm}”及其子标签。</p>
+            <div style={{ ...styles.modalStack, gap: s.md }}>
+              <Button
+                variant="secondary"
+                autoFocus
+                style={{ ...styles.modalActionButton, borderColor: c.borderMedium, borderRadius: r.md, padding: `${s.md}px ${s.inputX}px`, background: c.cardBg, color: c.textPrimary, transition: i.transition }}
+                onClick={() => confirmDelete(false)}
+              >
+                仅删除标签（保留笔记）
+              </Button>
+              <Button
+                variant="primary"
+                style={{ ...styles.modalActionButton, borderColor: c.danger, borderRadius: r.md, padding: `${s.md}px ${s.inputX}px`, background: c.danger, color: c.textInverse, transition: i.transition }}
+                onClick={() => confirmDelete(true)}
+              >
+                删除标签和所有相关笔记
+              </Button>
+              <Button
+                variant="ghost"
+                style={{ ...styles.modalActionButton, borderColor: c.borderMedium, borderRadius: r.md, padding: `${s.md}px ${s.inputX}px`, background: c.inputBg, color: c.textSecondary, transition: i.transition }}
+                onClick={closeDeleteDialog}
+              >
+                取消
+              </Button>
             </div>
-          </div>
+          </section>
         </div>
       )}
     </aside>

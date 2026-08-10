@@ -1,10 +1,21 @@
 import { applySchema } from '../db/schema';
 import { createMemo } from '../db/memo-repository';
+import { createSession } from '../db/session-repository';
 import { createTestD1 } from './d1-test-helpers';
 
 export const createTestEnv = async () => {
   const db = createTestD1();
   applySchema(db);
+
+  // All protected-route fixtures use a real, unexpired D1 session. Keeping
+  // this setup here prevents the old "any non-empty cookie is an author"
+  // convention from being accidentally reintroduced in individual tests.
+  await createSession(db, {
+    id: 'valid-author-session',
+    githubUserId: '42',
+    githubLogin: 'guoyingwei6',
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  });
 
   await createMemo(db, {
     slug: 'public-memo-2',
@@ -33,6 +44,8 @@ export const createTestEnv = async () => {
     put: async (key: string, value: ReadableStream | ArrayBuffer | ArrayBufferView | string | Blob | null) => {
       if (value instanceof ArrayBuffer) {
         objects.set(key, value);
+      } else if (value instanceof ReadableStream) {
+        objects.set(key, await new Response(value).arrayBuffer());
       }
       return { key } as R2Object;
     },
@@ -138,5 +151,6 @@ export const createTestEnv = async () => {
     GITHUB_CLIENT_ID: 'github-client-id',
     GITHUB_CLIENT_SECRET: 'github-client-secret',
     SESSION_SECRET: 'test-secret',
+    API_TOKEN: 'test-api-token',
   };
 };

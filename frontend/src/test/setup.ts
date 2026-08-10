@@ -1,5 +1,12 @@
 import '@testing-library/jest-dom/vitest';
-import { vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
+import { installIndexedDbFixture, resetIndexedDbFixture } from './indexeddb-fixture';
+
+installIndexedDbFixture();
+
+afterEach(() => {
+  resetIndexedDbFixture();
+});
 
 // Polyfill PointerEvent for JSDOM (not natively supported)
 if (typeof globalThis.PointerEvent === 'undefined') {

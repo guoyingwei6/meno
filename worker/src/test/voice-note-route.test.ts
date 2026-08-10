@@ -13,6 +13,7 @@ describe('POST /api/memos with voice note', () => {
         headers: {
           'Content-Type': 'application/json',
           Cookie: 'meno_session=valid-author-session',
+          Origin: 'https://meno.guoyingwei.top',
         },
         body: JSON.stringify({
           content: 'Voice note memo #audio',
@@ -93,6 +94,7 @@ describe('POST /api/memos with voice note', () => {
         headers: {
           'Content-Type': 'application/json',
           Cookie: 'meno_session=valid-author-session',
+          Origin: 'https://meno.guoyingwei.top',
         },
         body: JSON.stringify({
           content: '这是浏览器原生转写',

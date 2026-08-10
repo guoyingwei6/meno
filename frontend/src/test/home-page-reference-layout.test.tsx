@@ -87,8 +87,8 @@ describe('HomePage reference-inspired layout', () => {
 
     expect(await screen.findByText('全部标签')).toBeInTheDocument();
     // 侧边栏标签树子项显示为 "# childName" 格式（无 aria-label，通过文本匹配）
-    expect(screen.getAllByText('# 小红书').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('# 知识储备').length).toBeGreaterThan(0);
+    expect(await screen.findByText('# 小红书')).toBeInTheDocument();
+    expect(await screen.findByText('# 知识储备')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '回收站' })).toBeInTheDocument();
     expect(screen.getAllByText('女性开启理财第三步（最后一步）').length).toBeGreaterThan(0);
     expect(screen.getByRole('img', { name: 'memo preview' })).toBeInTheDocument();

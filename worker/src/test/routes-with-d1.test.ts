@@ -3,6 +3,7 @@ import type { MemoSummary, PublicMemosResponse } from '../../../shared/src/types
 import { app } from '../index';
 import { createMemo } from '../db/memo-repository';
 import { applySchema } from '../db/schema';
+import { createSession } from '../db/session-repository';
 import { createTestD1 } from './d1-test-helpers';
 
 describe('routes backed by D1', () => {
@@ -35,6 +36,13 @@ describe('routes backed by D1', () => {
       visibility: 'private',
       displayDate: '2026-03-24',
     });
+
+    await createSession(db, {
+      id: 'valid-author-session',
+      githubUserId: '42',
+      githubLogin: 'guoyingwei',
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    });
   });
 
   it('serves public memos from D1', async () => {
@@ -54,6 +62,7 @@ describe('routes backed by D1', () => {
         headers: {
           'Content-Type': 'application/json',
           Cookie: 'meno_session=valid-author-session',
+          Origin: 'http://localhost:5173',
         },
         body: JSON.stringify({
           content: 'Created through route #route',
@@ -79,5 +88,38 @@ describe('routes backed by D1', () => {
     const payload = (await listResponse.json()) as { memos: MemoSummary[] };
     expect(payload.memos.some((memo) => memo.slug)).toBe(true);
     expect(payload.memos.some((memo) => memo.visibility === 'private')).toBe(true);
+  });
+
+  it('passes public and author feed filters to the database query', async () => {
+    const publicResponse = await app.request(
+      'http://localhost/api/public/memos?tag=meno&date=2026-03-25',
+      {},
+      env,
+    );
+    const publicPayload = (await publicResponse.json()) as { memos: MemoSummary[] };
+    expect(publicResponse.status).toBe(200);
+    expect(publicPayload.memos.map((memo) => memo.slug)).toEqual(['db-public-1']);
+
+    const favoriteResponse = await app.request(
+      'http://localhost/api/memos/2/favorite',
+      {
+        method: 'POST',
+        headers: {
+          Cookie: 'meno_session=valid-author-session',
+          Origin: 'http://localhost:5173',
+        },
+      },
+      env,
+    );
+    expect(favoriteResponse.status).toBe(200);
+
+    const authorResponse = await app.request(
+      'http://localhost/api/dashboard/memos?view=favorited&tag=secret&date=2026-03-24',
+      { headers: { Cookie: 'meno_session=valid-author-session' } },
+      env,
+    );
+    const authorPayload = (await authorResponse.json()) as { memos: MemoSummary[] };
+    expect(authorResponse.status).toBe(200);
+    expect(authorPayload.memos.map((memo) => memo.slug)).toEqual(['db-private-1']);
   });
 });

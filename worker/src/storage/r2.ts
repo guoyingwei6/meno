@@ -5,12 +5,20 @@ export const storeUpload = async (
     file: File;
   },
 ) => {
-  await bucket.put(input.objectKey, await input.file.arrayBuffer(), {
+  // Keep the body as a stream so large uploads are not duplicated in Worker
+  // memory by an eager arrayBuffer() conversion.
+  await bucket.put(input.objectKey, input.file.stream(), {
     httpMetadata: {
       contentType: input.file.type || 'application/octet-stream',
     },
   });
 };
+
+// Public memo visibility can change after an object URL has been cached. A
+// short, validator-friendly policy avoids a year-long stale public response
+// while retaining ETag/conditional-request support.
+export const PUBLIC_ASSET_CACHE_CONTROL = 'public, max-age=0, must-revalidate';
+export const PRIVATE_ASSET_CACHE_CONTROL = 'private, no-store';
 
 const parseByteRange = (header: string, size: number) => {
   const match = header.match(/^bytes=(\d*)-(\d*)$/);
@@ -38,14 +46,19 @@ const parseByteRange = (header: string, size: number) => {
   };
 };
 
-export const getAssetResponse = async (bucket: R2Bucket, objectKey: string, rangeHeader?: string | null) => {
+export const getAssetResponse = async (
+  bucket: R2Bucket,
+  objectKey: string,
+  rangeHeader?: string | null,
+  options: { cacheControl?: string } = {},
+) => {
   const metadata = await bucket.head(objectKey);
   if (!metadata) return null;
 
   const headers = new Headers();
   metadata.writeHttpMetadata(headers);
   headers.set('etag', metadata.httpEtag);
-  headers.set('cache-control', 'public, max-age=31536000, immutable');
+  headers.set('cache-control', options.cacheControl ?? PUBLIC_ASSET_CACHE_CONTROL);
   headers.set('accept-ranges', 'bytes');
 
   if (!rangeHeader) {
@@ -65,6 +78,7 @@ export const getAssetResponse = async (bucket: R2Bucket, objectKey: string, rang
 
   partialObject.writeHttpMetadata(headers);
   headers.set('etag', partialObject.httpEtag);
+  headers.set('cache-control', options.cacheControl ?? PUBLIC_ASSET_CACHE_CONTROL);
   headers.set('content-range', `bytes ${range.offset}-${range.offset + range.length - 1}/${metadata.size}`);
   headers.set('content-length', String(range.length));
 

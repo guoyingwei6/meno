@@ -49,6 +49,7 @@ export const createOpenApiDocument = () => ({
           content: { type: 'string' },
           visibility: { type: 'string', enum: ['public', 'private'], default: 'public' },
           displayDate: { type: 'string', format: 'date' },
+          client_id: { type: 'string', minLength: 1, maxLength: 128, description: 'Stable id for idempotent retries.' },
         },
       },
       UpdateMemoRequest: {
@@ -131,6 +132,7 @@ export const createOpenApiDocument = () => ({
         },
         responses: {
           '201': { description: 'Created memo', content: { 'application/json': { schema: { $ref: '#/components/schemas/MemoResponse' } } } },
+          '200': { description: 'Existing memo returned for an idempotent retry', content: { 'application/json': { schema: { $ref: '#/components/schemas/MemoResponse' } } } },
           '400': { description: 'Invalid input', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
         },
       },

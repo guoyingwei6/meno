@@ -20,6 +20,7 @@ describe('MemoComposer default visibility', () => {
         content: '默认公开的 memo',
         visibility: 'public',
         displayDate: '2026-03-26',
+        client_id: expect.any(String),
       });
     });
   });

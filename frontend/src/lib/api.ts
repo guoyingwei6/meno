@@ -19,6 +19,22 @@ export interface MeResponse {
   githubLogin: string | null;
 }
 
+export interface AppSettings {
+  siteTitle: string;
+  defaultVisibility: 'public' | 'private';
+}
+
+export interface AppSettingsResponse {
+  settings: AppSettings;
+}
+
+// Matches the Worker repository defaults while the author settings request is
+// still pending or unavailable.
+export const DEFAULT_APP_SETTINGS: AppSettings = {
+  siteTitle: 'Meno',
+  defaultVisibility: 'private',
+};
+
 export interface PublicStatsResponse {
   stats: {
     total: number;
@@ -64,20 +80,34 @@ export interface CreateMemoInput {
   content: string;
   visibility: 'public' | 'private';
   displayDate: string;
+  /** Stable idempotency key for retries of one capture draft. */
+  client_id?: string;
   voiceNote?: CreateMemoVoiceNoteInput;
 }
+
+export type MemoSort = 'display-desc' | 'display-asc' | 'created-desc' | 'created-asc' | 'updated-desc' | 'updated-asc';
 
 export interface MemoPaginationOptions {
   limit?: number;
   cursor?: string;
+  sort?: MemoSort;
+  hasImages?: boolean;
+  hasTags?: boolean;
 }
+
+const appendMemoPaginationParams = (params: URLSearchParams, pagination?: MemoPaginationOptions) => {
+  if (pagination?.limit) params.set('limit', String(pagination.limit));
+  if (pagination?.cursor) params.set('cursor', pagination.cursor);
+  if (pagination?.sort) params.set('sort', pagination.sort);
+  if (pagination?.hasImages !== undefined) params.set('has_images', String(pagination.hasImages));
+  if (pagination?.hasTags !== undefined) params.set('has_tags', String(pagination.hasTags));
+};
 
 export const fetchPublicMemos = async (tag?: string, date?: string, pagination?: MemoPaginationOptions): Promise<PublicMemosResponse> => {
   const params = new URLSearchParams();
   if (tag) params.set('tag', tag);
   if (date) params.set('date', date);
-  if (pagination?.limit) params.set('limit', String(pagination.limit));
-  if (pagination?.cursor) params.set('cursor', pagination.cursor);
+  appendMemoPaginationParams(params, pagination);
   const search = params.toString() ? `?${params.toString()}` : '';
   const response = await fetch(withApiBase(`/api/public/memos${search}`));
 
@@ -110,6 +140,12 @@ export const fetchPublicMemo = async (slug: string): Promise<PublicMemoResponse>
   return response.json();
 };
 
+export const fetchSharedMemo = async (token: string): Promise<PublicMemoResponse> => {
+  const response = await fetch(withApiBase(`/api/public/shares/${encodeURIComponent(token)}`));
+  if (!response.ok) throw new Error(response.status === 404 ? '分享链接不存在或已失效' : '分享笔记加载失败');
+  return response.json();
+};
+
 export const fetchAuthorMemo = async (slug: string): Promise<PublicMemoResponse> => {
   const response = await fetch(withApiBase(`/api/dashboard/memos/${slug}`), {
     credentials: 'include',
@@ -131,6 +167,25 @@ export const fetchMe = async (): Promise<MeResponse> => {
     throw new Error('Failed to fetch current session');
   }
 
+  return response.json();
+};
+
+export const fetchAppSettings = async (): Promise<AppSettingsResponse> => {
+  const response = await fetch(withApiBase('/api/dashboard/settings'), {
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to fetch app settings');
+  return response.json();
+};
+
+export const updateAppSettings = async (input: Partial<AppSettings>): Promise<AppSettingsResponse> => {
+  const response = await fetch(withApiBase('/api/dashboard/settings'), {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error('Failed to update app settings');
   return response.json();
 };
 
@@ -158,11 +213,12 @@ export const fetchDashboardMemos = async (
   view: 'all' | 'public' | 'private' | 'trash' | 'favorited',
   date?: string,
   pagination?: MemoPaginationOptions,
+  tag?: string,
 ): Promise<PublicMemosResponse> => {
   const params = new URLSearchParams({ view });
   if (date) params.set('date', date);
-  if (pagination?.limit) params.set('limit', String(pagination.limit));
-  if (pagination?.cursor) params.set('cursor', pagination.cursor);
+  if (tag) params.set('tag', tag);
+  appendMemoPaginationParams(params, pagination);
   const response = await fetch(withApiBase(`/api/dashboard/memos?${params.toString()}`), {
     credentials: 'include',
   });
@@ -180,6 +236,15 @@ export const createMemoShare = async (id: number): Promise<{ share: { token: str
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to create memo share');
+  return response.json();
+};
+
+export const revokeMemoShare = async (id: number): Promise<{ success: boolean }> => {
+  const response = await fetch(withApiBase(`/api/dashboard/memos/${id}/share`), {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to revoke memo share');
   return response.json();
 };
 
@@ -458,9 +523,10 @@ export const deleteTag = async (tag: string, deleteNotes: boolean): Promise<{ de
   return response.json();
 };
 
-export const uploadFile = async (file: File): Promise<{ url: string; objectKey: string }> => {
+export const uploadFile = async (file: File, clientId?: string): Promise<{ url: string; objectKey: string }> => {
   const formData = new FormData();
   formData.append('file', file);
+  if (clientId) formData.append('client_id', clientId);
   const response = await fetch(withApiBase('/api/uploads'), {
     method: 'POST',
     credentials: 'include',

@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getCaretCoords, getRecentTags, recordRecentTag } from '../lib/caret';
+import { deleteDraft, enqueueOutbox, getTabDraftId, readDraft, saveDraft, type MemoDraftRecord } from '../lib/draft-store';
+import { isLikelyOfflineError } from '../lib/outbox';
 import { SortableImagePreviewList } from './SortableImagePreviewList';
 import { useTheme, colors } from '../lib/theme';
+import { MenuItem, MenuSurface } from './ui/Menu';
 
 interface MemoComposerSubmitInput {
   content: string;
   visibility: 'public' | 'private';
   displayDate: string;
+  client_id: string;
   voiceNote?: {
     objectKey: string;
     audioUrl: string;
@@ -20,13 +24,19 @@ interface MemoComposerSubmitInput {
 
 interface MemoComposerProps {
   defaultDisplayDate: string;
+  defaultVisibility?: 'public' | 'private';
   onSubmit: (input: MemoComposerSubmitInput) => Promise<void>;
+  onQueueOffline?: (draft: MemoDraftRecord) => Promise<unknown>;
   existingTags?: Array<{ tag: string; count: number }>;
+  /** The shell stays interactive while identity is being resolved. */
+  authState?: 'pending' | 'authenticated' | 'unauthenticated';
 }
 
 interface UploadedImage {
   url: string;
   name: string;
+  clientId?: string;
+  blob?: Blob;
 }
 
 interface AudioDraft {
@@ -101,10 +111,48 @@ const getAudioFileExtension = (mimeType: string) => {
 const COMPOSER_TEXTAREA_MIN_HEIGHT = 100;
 const COMPOSER_TEXTAREA_MAX_HEIGHT = 420;
 const COMPOSER_TEXTAREA_MAX_VIEWPORT_RATIO = 0.6;
+const COMPOSER_NARROW_SCREEN_QUERY = '(max-width: 640px)';
+const MAX_COMPOSER_IMAGES = 8;
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const ATTACHMENT_EXTENSIONS: Record<string, string[]> = {
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'image/webp': ['.webp'],
+  'image/gif': ['.gif'],
+  'image/avif': ['.avif'],
+  'audio/webm': ['.webm'],
+  'audio/mp4': ['.m4a', '.mp4'],
+  'audio/mpeg': ['.mp3'],
+  'audio/ogg': ['.ogg', '.oga'],
+  'audio/wav': ['.wav'],
+  'audio/x-wav': ['.wav'],
+};
+
+const validateAttachment = (file: File, kind: 'image' | 'audio'): string | null => {
+  if (file.size < 1) return '文件不能为空';
+  if (file.size > MAX_ATTACHMENT_BYTES) return '文件不能超过 10 MiB';
+  const mimeType = file.type.trim().toLowerCase().split(';', 1)[0];
+  const allowedExtensions = ATTACHMENT_EXTENSIONS[mimeType];
+  const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+  if (!allowedExtensions || !allowedExtensions.includes(extension) || !mimeType.startsWith(`${kind}/`)) {
+    return kind === 'image'
+      ? '仅支持 JPEG、PNG、WebP、GIF 或 AVIF 图片'
+      : '录音格式不受支持';
+  }
+  return null;
+};
 
 const getComposerTextareaMaxHeight = () => {
   const viewportCap = Math.floor(window.innerHeight * COMPOSER_TEXTAREA_MAX_VIEWPORT_RATIO);
   return Math.max(COMPOSER_TEXTAREA_MIN_HEIGHT, Math.min(COMPOSER_TEXTAREA_MAX_HEIGHT, viewportCap));
+};
+
+const isNarrowComposerScreen = () => {
+  if (typeof window === 'undefined') return false;
+  if (typeof window.matchMedia === 'function') {
+    return window.matchMedia(COMPOSER_NARROW_SCREEN_QUERY)?.matches ?? window.innerWidth <= 640;
+  }
+  return window.innerWidth <= 640;
 };
 
 const resizeComposerTextarea = (textarea: HTMLTextAreaElement) => {
@@ -117,6 +165,22 @@ const resizeComposerTextarea = (textarea: HTMLTextAreaElement) => {
 
   textarea.style.height = `${nextHeight}px`;
   textarea.style.overflowY = contentHeight > maxHeight ? 'auto' : 'hidden';
+};
+
+const createLocalObjectUrl = (blob: Blob): string => {
+  if (typeof URL.createObjectURL === 'function') return URL.createObjectURL(blob);
+  return `blob:meno-local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
+
+const createClientId = (): string => {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // Fall through to the timestamp/random fallback for older browsers.
+  }
+  return `memo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 };
 
 /** Renders text with #tags in green and code blocks with background — sits behind transparent textarea */
@@ -166,9 +230,9 @@ const restoreTextareaFocus = (textarea: HTMLTextAreaElement | null, cursorPos: n
   });
 };
 
-export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }: MemoComposerProps) => {
+export const MemoComposer = ({ defaultDisplayDate, defaultVisibility = 'public', onSubmit, onQueueOffline = enqueueOutbox, existingTags = [], authState = 'authenticated' }: MemoComposerProps) => {
   const [content, setContent] = useState('');
-  const [visibility, setVisibility] = useState<'public' | 'private'>('public');
+  const [visibility, setVisibility] = useState<'public' | 'private'>(defaultVisibility);
   const [displayDate, setDisplayDate] = useState(defaultDisplayDate);
   const [images, setImages] = useState<UploadedImage[]>([]);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
@@ -179,6 +243,10 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const [tagDropdown, setTagDropdown] = useState<{ suggestions: string[]; top: number; left: number } | null>(null);
   const [tagIndex, setTagIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [formatMenuOpen, setFormatMenuOpen] = useState(false);
+  const [isNarrowScreen, setIsNarrowScreen] = useState(isNarrowComposerScreen);
   const { isDark } = useTheme();
   const c = colors(isDark);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -189,8 +257,70 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const discardRecordingRef = useRef(false);
+  const draftIdRef = useRef<string | null>(null);
+  const clientIdRef = useRef<string | null>(null);
+  const draftUserInputRef = useRef(false);
+  const skipNextDraftSaveRef = useRef(false);
+  const formatMenuRef = useRef<HTMLDivElement | null>(null);
+  const moreButtonRef = useRef<HTMLButtonElement | null>(null);
+  const formatMenuId = useId();
   const isRecordingSupported = Boolean(navigator.mediaDevices?.getUserMedia) && typeof MediaRecorder !== 'undefined';
   const hasDraft = recordingState !== 'recording' && (content.length > 0 || images.length > 0 || Boolean(audioDraft) || transcriptText.length > 0);
+  const canPublish = authState === 'authenticated';
+
+  const latestDraftStateRef = useRef({ content, images, audioDraft, transcriptText, displayDate, visibility });
+  latestDraftStateRef.current = { content, images, audioDraft, transcriptText, displayDate, visibility };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = typeof window.matchMedia === 'function'
+      ? window.matchMedia(COMPOSER_NARROW_SCREEN_QUERY) ?? null
+      : null;
+    const updateScreenMode = () => {
+      const next = mediaQuery ? mediaQuery.matches : window.innerWidth <= 640;
+      setIsNarrowScreen(next);
+      if (!next) setFormatMenuOpen(false);
+    };
+    updateScreenMode();
+    window.addEventListener('resize', updateScreenMode);
+    if (mediaQuery && typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', updateScreenMode);
+    } else {
+      mediaQuery?.addListener?.(updateScreenMode);
+    }
+    return () => {
+      window.removeEventListener('resize', updateScreenMode);
+      if (mediaQuery && typeof mediaQuery.removeEventListener === 'function') {
+        mediaQuery.removeEventListener('change', updateScreenMode);
+      } else {
+        mediaQuery?.removeListener?.(updateScreenMode);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!formatMenuOpen || !isNarrowScreen) return;
+    formatMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+  }, [formatMenuOpen, isNarrowScreen]);
+
+  useEffect(() => {
+    if (!formatMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!formatMenuRef.current?.contains(event.target as Node)) setFormatMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setFormatMenuOpen(false);
+      moreButtonRef.current?.focus();
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [formatMenuOpen]);
 
   const getSpeechRecognitionConstructor = () => {
     const speechWindow = window as Window & {
@@ -201,7 +331,22 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   };
 
   const revokeAudioDraftUrl = (draft: AudioDraft | null) => {
-    if (draft) URL.revokeObjectURL(draft.previewUrl);
+    if (draft && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(draft.previewUrl);
+  };
+
+  const revokeImageObjectUrl = (image: UploadedImage) => {
+    if (image.url.startsWith('blob:') && typeof URL.revokeObjectURL === 'function') {
+      URL.revokeObjectURL(image.url);
+    }
+  };
+
+  const revokeImageObjectUrls = (items: UploadedImage[]) => {
+    items.forEach(revokeImageObjectUrl);
+  };
+
+  const ensureDraftId = () => {
+    if (!draftIdRef.current) draftIdRef.current = getTabDraftId();
+    return draftIdRef.current;
   };
 
   const clearAudioDraft = () => {
@@ -282,6 +427,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     const match = before.match(/#([^\s#]*)$/);
     if (!match) return;
     const newContent = content.slice(0, cursorPos - match[0].length) + '#' + tag + ' ' + content.slice(cursorPos);
+    draftUserInputRef.current = true;
     setContent(newContent);
     setTagDropdown(null);
     dismissedTagMatchRef.current = null;
@@ -294,26 +440,60 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   };
 
   const uploadImage = async (file: File) => {
+    if (images.length >= MAX_COMPOSER_IMAGES) {
+      setSubmitError(`最多添加 ${MAX_COMPOSER_IMAGES} 张图片`);
+      return;
+    }
+    const validationError = validateAttachment(file, 'image');
+    if (validationError) {
+      setSubmitError(validationError);
+      return;
+    }
+    // Add the Blob first. Network/upload failures must leave a recoverable
+    // attachment in the draft instead of discarding the user's selection.
+    setSubmitError(null);
+    draftUserInputRef.current = true;
+    const attachmentClientId = `${ensureClientId()}:image:${createClientId()}`;
+    const localUrl = createLocalObjectUrl(file);
+    setImages((prev) => [...prev, { url: localUrl, name: file.name, clientId: attachmentClientId, blob: file }]);
     const form = new FormData();
     form.append('file', file);
-    const response = await fetch(`${getApiBase()}/api/uploads`, {
-      method: 'POST',
-      credentials: 'include',
-      body: form,
-    });
-    const payload = (await response.json()) as { url: string };
-    setImages((prev) => [...prev, { url: payload.url, name: file.name }]);
+    form.append('client_id', attachmentClientId);
+    try {
+      const response = await fetch(`${getApiBase()}/api/uploads`, {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      });
+      if (!response.ok) throw new Error(`图片上传失败（HTTP ${response.status}）`);
+      const payload = (await response.json()) as { url?: string };
+      if (!payload.url) throw new Error('图片上传响应无效');
+      const uploadedUrl = payload.url;
+      setImages((prev) => prev.map((image) => {
+        if (image.url !== localUrl) return image;
+        if (localUrl.startsWith('blob:') && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(localUrl);
+        return { ...image, url: uploadedUrl };
+      }));
+    } catch {
+      // Keep the local Blob/object URL; handleSubmit will retry its upload.
+    }
   };
 
-  const uploadAudio = async (file: File) => {
+  const uploadAudio = async (file: File, clientId: string) => {
+    const validationError = validateAttachment(file, 'audio');
+    if (validationError) throw new Error(validationError);
     const form = new FormData();
     form.append('file', file);
+    form.append('client_id', clientId);
     const response = await fetch(`${getApiBase()}/api/uploads`, {
       method: 'POST',
       credentials: 'include',
       body: form,
     });
-    return response.json() as Promise<{ url: string; objectKey: string; fileName: string }>;
+    if (!response.ok) throw new Error(`语音上传失败（HTTP ${response.status}）`);
+    const payload = await response.json() as { url?: string; objectKey?: string; fileName?: string };
+    if (!payload.url || !payload.objectKey) throw new Error('语音上传响应无效');
+    return payload as { url: string; objectKey: string; fileName: string };
   };
 
   const resetVoiceDraft = () => {
@@ -329,13 +509,17 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   };
 
   const cancelDraft = () => {
+    draftUserInputRef.current = false;
     setContent('');
-    setVisibility('public');
+    setVisibility(defaultVisibility);
     setDisplayDate(defaultDisplayDate);
+    revokeImageObjectUrls(images);
     setImages([]);
     setTagDropdown(null);
     dismissedTagMatchRef.current = null;
     resetVoiceDraft();
+    void clearStoredDraft();
+    clientIdRef.current = createClientId();
   };
 
   const cancelRecording = () => {
@@ -350,6 +534,8 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
 
   const startRecording = async () => {
     if (!isRecordingSupported || recordingState === 'recording' || submitting) return;
+
+    draftUserInputRef.current = true;
 
     let stream: MediaStream | null = null;
 
@@ -400,11 +586,17 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
         }
         const mimeType = recorder.mimeType || 'audio/webm';
         const blob = new Blob(chunks, { type: mimeType });
-        setAudioDraft({
-          blob,
-          previewUrl: URL.createObjectURL(blob),
-          durationMs: Math.max(Date.now() - startedAt, 0),
-          mimeType,
+        setAudioDraft((current) => {
+          // Re-recording replaces the old review draft only after the new
+          // recorder has actually produced a Blob. This keeps a failed setup
+          // from destroying the previous recording.
+          revokeAudioDraftUrl(current);
+          return {
+            blob,
+            previewUrl: createLocalObjectUrl(blob),
+            durationMs: Math.max(Date.now() - startedAt, 0),
+            mimeType,
+          };
         });
         mediaRecorderRef.current = null;
         stopMediaStream();
@@ -418,7 +610,6 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
       mediaRecorderRef.current = recorder;
       speechRecognitionRef.current = recognition;
       discardRecordingRef.current = false;
-      clearAudioDraft();
       setTranscriptText('');
       setRecordingStartedAt(startedAt);
       setRecordingDurationMs(0);
@@ -460,6 +651,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     const selected = content.slice(start, end);
     const wrapped = `${before}${selected || '文本'}${after}`;
     const next = content.slice(0, start) + wrapped + content.slice(end);
+    draftUserInputRef.current = true;
     setContent(next);
     setTimeout(() => {
       ta.focus();
@@ -475,6 +667,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     const start = ta.selectionStart;
     const lineStart = content.lastIndexOf('\n', start - 1) + 1;
     const next = content.slice(0, lineStart) + prefix + content.slice(lineStart);
+    draftUserInputRef.current = true;
     setContent(next);
     setTimeout(() => {
       ta.focus();
@@ -482,23 +675,117 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     }, 0);
   };
 
+  const runFormatMenuAction = (action: () => void) => {
+    action();
+    setFormatMenuOpen(false);
+  };
+
+  const handleFormatMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+    if (!items.length) return;
+    event.preventDefault();
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? items.length - 1
+        : (currentIndex + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[nextIndex]?.focus();
+  };
+
+  const buildDraftRecord = (state = latestDraftStateRef.current): MemoDraftRecord | null => {
+    const id = ensureDraftId();
+    if (!id) return null;
+    const { content: draftContent, displayDate: draftDisplayDate, visibility: draftVisibility, images: draftImages, audioDraft: draftAudio, transcriptText: draftTranscript } = state;
+    const draftClientId = clientIdRef.current ?? (clientIdRef.current = createClientId());
+    const tags = Array.from(draftContent.matchAll(/(?:^|\s)#([^\s#]+)/g)).map((match) => match[1]);
+    return {
+      id,
+      clientId: draftClientId,
+      content: draftContent,
+      displayDate: draftDisplayDate,
+      visibility: draftVisibility,
+      tags,
+      images: draftImages.map((image, index) => ({
+        name: image.name,
+        clientId: image.clientId ?? `${draftClientId}:image:${index}`,
+        // Object URLs are tab-local and must never be persisted as if they
+        // were durable upload URLs. Keep the original Blob for re-upload.
+        url: image.url.startsWith('blob:') ? undefined : image.url,
+        blob: image.blob,
+      })),
+      audio: draftAudio
+        ? { blob: draftAudio.blob, durationMs: draftAudio.durationMs, mimeType: draftAudio.mimeType }
+        : null,
+      transcriptText: draftTranscript,
+      updatedAt: Date.now(),
+    };
+  };
+
+  const clearStoredDraft = async () => {
+    const id = ensureDraftId();
+    if (!id) return;
+    // Resetting state below triggers the draft effect. Skip that one empty
+    // write so a successful publish really removes the local draft.
+    skipNextDraftSaveRef.current = true;
+    await deleteDraft(id);
+  };
+
+  const ensureClientId = () => {
+    if (!clientIdRef.current) clientIdRef.current = createClientId();
+    return clientIdRef.current;
+  };
+
   const handleSubmit = async () => {
     const textPart = content.trim();
     const transcriptPart = transcriptText.trim();
     const imagePart = images.map((img) => `![](${img.url})`).join('\n');
     const fullContent = [textPart || transcriptPart, imagePart].filter(Boolean).join('\n');
-    if ((!fullContent && !audioDraft) || submitting || recordingState === 'recording') return;
+    if ((!fullContent && !audioDraft) || submitting || recordingState === 'recording' || !canPublish) return;
     const currentAudioDraft = audioDraft;
     let submitted = false;
+    setSubmitError(null);
     setSubmitting(true);
     setRecordingState(currentAudioDraft ? 'saving' : 'idle');
     try {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        const offlineDraft = buildDraftRecord();
+        if (!offlineDraft) throw new Error('无法保存空白草稿');
+        await onQueueOffline(offlineDraft);
+        setSubmitError('当前离线，已保存到待发送箱；联网后会自动发布。');
+        return;
+      }
+
       let voiceNote: MemoComposerSubmitInput['voiceNote'];
+
+      // A restored image may only have a Blob and a tab-local object URL. Make
+      // sure it gets uploaded before the memo references it.
+      const resolvedImages = [] as UploadedImage[];
+      for (const [index, image] of images.entries()) {
+        if (image.blob && image.url.startsWith('blob:')) {
+          const attachmentClientId = image.clientId ?? `${ensureClientId()}:image:${index}`;
+          const form = new FormData();
+          form.append('file', image.blob, image.name);
+          form.append('client_id', attachmentClientId);
+          const response = await fetch(`${getApiBase()}/api/uploads`, {
+            method: 'POST',
+            credentials: 'include',
+            body: form,
+          });
+          if (!response.ok) throw new Error(`图片上传失败（HTTP ${response.status}）`);
+          const payload = (await response.json()) as { url?: string };
+          if (!payload.url) throw new Error('图片上传响应无效');
+          resolvedImages.push({ ...image, url: payload.url, clientId: attachmentClientId });
+        } else {
+          resolvedImages.push(image);
+        }
+      }
 
       if (currentAudioDraft) {
         const extension = getAudioFileExtension(currentAudioDraft.mimeType);
         const file = new File([currentAudioDraft.blob], `voice-note.${extension}`, { type: currentAudioDraft.mimeType });
-        const upload = await uploadAudio(file);
+        const upload = await uploadAudio(file, `${ensureClientId()}:audio`);
         voiceNote = {
           objectKey: upload.objectKey,
           audioUrl: upload.url,
@@ -513,10 +800,15 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
         };
       }
 
-      await onSubmit({ content: fullContent, visibility, displayDate, voiceNote });
+      setImages(resolvedImages);
+      const resolvedImagePart = resolvedImages.map((img) => `![](${img.url})`).join('\n');
+      const resolvedContent = [textPart || transcriptPart, resolvedImagePart].filter(Boolean).join('\n');
+      await onSubmit({ content: resolvedContent, visibility, displayDate, client_id: ensureClientId(), voiceNote });
+      draftUserInputRef.current = false;
       setContent('');
-      setVisibility('public');
+      setVisibility(defaultVisibility);
       setDisplayDate(defaultDisplayDate);
+      revokeImageObjectUrls(images);
       setImages([]);
       clearAudioDraft();
       mediaRecorderRef.current = null;
@@ -526,7 +818,24 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
       setRecordingStartedAt(null);
       setRecordingDurationMs(0);
       setRecordingState('idle');
+      await clearStoredDraft();
+      clientIdRef.current = createClientId();
       submitted = true;
+    } catch (error) {
+      // Keep all editor state (including Blob attachments) for retry after a
+      // transient upload/API failure. Avoid an unhandled rejection from the
+      // button's async event handler.
+      if (isLikelyOfflineError(error)) {
+        const offlineDraft = buildDraftRecord();
+        if (offlineDraft) {
+          await onQueueOffline(offlineDraft);
+          setSubmitError('网络不可用，已保存到待发送箱；联网后会自动发布。');
+        } else {
+          setSubmitError('网络不可用，草稿保存失败，请重试');
+        }
+      } else {
+        setSubmitError(error instanceof Error ? error.message : '发布失败，请重试');
+      }
     } finally {
       setSubmitting(false);
       if (!submitted) setRecordingState(currentAudioDraft ? 'review' : 'idle');
@@ -549,6 +858,16 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
     // Format shortcuts: Ctrl/Cmd + B/I/U
     const mod = e.metaKey || e.ctrlKey;
     if (!mod) return;
+    if (e.key === 'Enter') {
+      // Do not steal the Enter key while an IME is composing (Chrome uses
+      // keyCode 229 for this path). The same shortcut works on macOS and
+      // Windows/Linux once composition has ended.
+      const nativeEvent = e.nativeEvent as KeyboardEvent & { isComposing?: boolean; keyCode?: number };
+      if (nativeEvent.isComposing || nativeEvent.keyCode === 229) return;
+      e.preventDefault();
+      void handleSubmit();
+      return;
+    }
     if (e.key === 'b') { e.preventDefault(); wrapSelection('**', '**'); }
     else if (e.key === 'i') { e.preventDefault(); wrapSelection('*', '*'); }
     else if (e.key === 'u') { e.preventDefault(); wrapSelection('<u>', '</u>'); }
@@ -573,6 +892,90 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   }, [content]);
 
   useEffect(() => {
+    if (draftUserInputRef.current || content || images.length > 0 || audioDraft || transcriptText) return;
+    setVisibility(defaultVisibility);
+  }, [audioDraft, content, defaultVisibility, images.length, transcriptText]);
+
+  useEffect(() => {
+    const handleCaptureShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.key.toLowerCase() !== 'c') return;
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '')) return;
+      event.preventDefault();
+      textareaRef.current?.focus();
+    };
+    window.addEventListener('keydown', handleCaptureShortcut);
+    return () => window.removeEventListener('keydown', handleCaptureShortcut);
+  }, []);
+
+  // Restore once per tab. If a user starts typing before IndexedDB responds,
+  // leave that input untouched instead of replacing it with an older draft.
+  useEffect(() => {
+    const draftId = ensureDraftId();
+    setDraftReady(false);
+    let cancelled = false;
+    void readDraft(draftId).then((draft) => {
+      if (cancelled) return;
+      const current = latestDraftStateRef.current;
+      if (draft && !draftUserInputRef.current && !current.content && current.images.length === 0 && !current.audioDraft && !current.transcriptText) {
+        clientIdRef.current = draft.clientId ?? clientIdRef.current ?? createClientId();
+        setContent(draft.content);
+        setDisplayDate(draft.displayDate || defaultDisplayDate);
+        setVisibility(draft.visibility === 'private' ? 'private' : 'public');
+        const restoredClientId = draft.clientId ?? (clientIdRef.current ?? (clientIdRef.current = createClientId()));
+        setImages(draft.images.map((image, index) => ({
+          name: image.name,
+          clientId: image.clientId ?? `${restoredClientId}:image:${index}`,
+          url: image.url || (image.blob ? createLocalObjectUrl(image.blob) : ''),
+          blob: image.blob,
+        })).filter((image) => Boolean(image.url)));
+        if (draft.audio?.blob) {
+          setAudioDraft({
+            blob: draft.audio.blob,
+            previewUrl: createLocalObjectUrl(draft.audio.blob),
+            durationMs: draft.audio.durationMs,
+            mimeType: draft.audio.mimeType,
+          });
+        }
+        setTranscriptText(draft.transcriptText || '');
+      }
+      if (!clientIdRef.current) clientIdRef.current = createClientId();
+      // This state transition is intentional: input entered before the
+      // asynchronous read completed must still run through the save effect.
+      setDraftReady(true);
+    }).catch(() => {
+      // The composer remains usable if storage is blocked or unavailable.
+      if (cancelled) return;
+      setDraftReady(true);
+    });
+    return () => { cancelled = true; };
+    // The restore must run only when the composer is mounted for this date.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultDisplayDate]);
+
+  // Persist input after a short idle period. Blobs are structured-cloned by
+  // IndexedDB, so reloads can recover image and recording attachments too.
+  useEffect(() => {
+    if (!draftReady) {
+      return;
+    }
+    // A reset after successful publish/cancel should not write an empty draft.
+    // If the user starts typing again before this effect runs, however, the
+    // non-empty state below must still be saved.
+    if (skipNextDraftSaveRef.current) {
+      skipNextDraftSaveRef.current = false;
+    }
+    const draft = buildDraftRecord();
+    if (!draft || (!hasDraft && !content.trim())) return;
+    const timer = window.setTimeout(() => {
+      void saveDraft(draft);
+    }, 500);
+    return () => window.clearTimeout(timer);
+    // buildDraftRecord/hasDraft intentionally read the current composer state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content, displayDate, visibility, images, audioDraft, transcriptText, hasDraft, draftReady]);
+
+  useEffect(() => {
     if (recordingState !== 'recording' || recordingStartedAt === null) return;
     const tick = () => setRecordingDurationMs(Date.now() - recordingStartedAt);
     tick();
@@ -581,11 +984,12 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
   }, [recordingState, recordingStartedAt]);
 
   useEffect(() => () => {
-    revokeAudioDraftUrl(audioDraft);
+    revokeAudioDraftUrl(latestDraftStateRef.current.audioDraft);
+    revokeImageObjectUrls(latestDraftStateRef.current.images);
     mediaRecorderRef.current = null;
     stopMediaStream();
     stopSpeechRecognition();
-  }, [audioDraft]);
+  }, []);
 
   return (
     <>
@@ -594,6 +998,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
         <HighlightOverlay text={content} textColor={c.textPrimary} isDark={isDark} />
         <textarea
           ref={textareaRef}
+          id="memo-composer-input"
           style={{ ...styles.textarea, caretColor: c.textPrimary }}
           placeholder="现在的想法是..."
           value={content}
@@ -602,6 +1007,7 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
             closeTagSuggestions(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length);
           }}
           onChange={(event) => {
+            draftUserInputRef.current = true;
             setContent(event.target.value);
             updateTagSuggestions(event.target.value, event.target.selectionStart ?? event.target.value.length);
           }}
@@ -625,9 +1031,20 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
         <SortableImagePreviewList
           items={images.map((img) => ({ id: img.url, url: img.url, name: img.name }))}
           onReorder={(nextItems) => {
-            setImages(nextItems.map((item) => ({ url: item.url, name: item.name })));
+            draftUserInputRef.current = true;
+            setImages(nextItems.map((item) => {
+              const previous = images.find((image) => image.url === item.url);
+              return previous ? { ...previous, name: item.name } : { url: item.url, name: item.name };
+            }));
           }}
-          onRemove={(index) => setImages((prev) => prev.filter((_, idx) => idx !== index))}
+          onRemove={(index) => {
+            draftUserInputRef.current = true;
+            setImages((prev) => {
+              const removed = prev[index];
+              if (removed) revokeImageObjectUrl(removed);
+              return prev.filter((_, idx) => idx !== index);
+            });
+          }}
         />
       ) : null}
       {recordingState !== 'idle' || audioDraft ? (
@@ -656,17 +1073,19 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
                 </button>
                 <button
                   type="button"
-                  style={{ ...styles.voicePrimaryButton, ...(submitting ? styles.disabledButton : null) }}
+                  style={{ ...styles.voicePrimaryButton, ...(submitting || !canPublish ? styles.disabledButton : null) }}
                   onClick={handleSubmit}
-                  disabled={submitting}
+                  disabled={submitting || !canPublish}
+                  title={!canPublish ? (authState === 'pending' ? '正在验证身份...' : '登录后发布') : '保存语音笔记'}
                 >
-                  保存语音笔记
+                  {!canPublish ? '🔒 验证身份后发布' : '保存语音笔记'}
                 </button>
               </div>
             </>
           ) : null}
         </div>
       ) : null}
+      {submitError ? <div role="alert" style={{ padding: '0 20px 8px', color: '#c24b4b', fontSize: 13 }}>{submitError}</div> : null}
       <div style={{ ...styles.toolbar, borderTopColor: c.borderLight }}>
         <div style={styles.toolsRow}>
           <button type="button" style={{ ...styles.fmtButton, color: '#3aa864', fontWeight: 700 }} title="添加标签" onClick={() => {
@@ -676,31 +1095,79 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
             const before = content.slice(0, pos);
             const after = content.slice(pos);
             const prefix = pos > 0 && content[pos - 1] !== ' ' && content[pos - 1] !== '\n' ? ' #' : '#';
+            draftUserInputRef.current = true;
             setContent(before + prefix + after);
             setTimeout(() => { ta.focus(); ta.setSelectionRange(pos + prefix.length, pos + prefix.length); }, 0);
           }}>
             #
           </button>
           <span style={styles.fmtDivider} />
-          <button type="button" style={styles.fmtButton} title="加粗" onClick={() => wrapSelection('**', '**')}>
-            <strong>B</strong>
-          </button>
-          <button type="button" style={styles.fmtButton} title="斜体" onClick={() => wrapSelection('*', '*')}>
-            <em>I</em>
-          </button>
-          <button type="button" style={styles.fmtButton} title="下划线" onClick={() => wrapSelection('<u>', '</u>')}>
-            <span style={{ textDecoration: 'underline' }}>U</span>
-          </button>
-          <button type="button" style={styles.fmtButton} title="代码块" onClick={() => wrapSelection('```\n', '\n```')}>
-            <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>&lt;/&gt;</span>
-          </button>
-          <span style={styles.fmtDivider} />
-          <button type="button" style={styles.fmtButton} title="无序列表" onClick={() => insertLinePrefix('- ')}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1" fill="#666"/><circle cx="4" cy="12" r="1" fill="#666"/><circle cx="4" cy="18" r="1" fill="#666"/></svg>
-          </button>
-          <button type="button" style={styles.fmtButton} title="有序列表" onClick={() => insertLinePrefix('1. ')}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="2" y="8" fill="#666" stroke="none" fontSize="8" fontFamily="sans-serif">1</text><text x="2" y="14" fill="#666" stroke="none" fontSize="8" fontFamily="sans-serif">2</text><text x="2" y="20" fill="#666" stroke="none" fontSize="8" fontFamily="sans-serif">3</text></svg>
-          </button>
+          {isNarrowScreen ? (
+            <div ref={formatMenuRef} style={styles.moreMenu}>
+              <button
+                ref={moreButtonRef}
+                type="button"
+                style={{ ...styles.fmtButton, ...styles.moreButton }}
+                title="更多格式"
+                aria-haspopup="menu"
+                aria-expanded={formatMenuOpen}
+                aria-controls={formatMenuId}
+                onClick={() => setFormatMenuOpen((open) => !open)}
+              >
+                更多
+              </button>
+              {formatMenuOpen ? (
+                <MenuSurface
+                  id={formatMenuId}
+                  label="更多格式"
+                  aria-orientation="vertical"
+                  onKeyDown={handleFormatMenuKeyDown}
+                  style={{ ...styles.formatMenu, background: c.cardBg, borderColor: c.borderMedium }}
+                >
+                  <MenuItem aria-label="加粗" style={{ ...styles.formatMenuItem, color: c.textPrimary }} onClick={() => runFormatMenuAction(() => wrapSelection('**', '**'))}>
+                    <strong aria-hidden="true">B</strong><span>加粗</span>
+                  </MenuItem>
+                  <MenuItem aria-label="斜体" style={{ ...styles.formatMenuItem, color: c.textPrimary }} onClick={() => runFormatMenuAction(() => wrapSelection('*', '*'))}>
+                    <em aria-hidden="true">I</em><span>斜体</span>
+                  </MenuItem>
+                  <MenuItem aria-label="下划线" style={{ ...styles.formatMenuItem, color: c.textPrimary }} onClick={() => runFormatMenuAction(() => wrapSelection('<u>', '</u>'))}>
+                    <span aria-hidden="true" style={{ textDecoration: 'underline' }}>U</span><span>下划线</span>
+                  </MenuItem>
+                  <MenuItem aria-label="代码块" style={{ ...styles.formatMenuItem, color: c.textPrimary }} onClick={() => runFormatMenuAction(() => wrapSelection('```\n', '\n```'))}>
+                    <span aria-hidden="true" style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>&lt;/&gt;</span><span>代码块</span>
+                  </MenuItem>
+                  <MenuItem aria-label="无序列表" style={{ ...styles.formatMenuItem, color: c.textPrimary }} onClick={() => runFormatMenuAction(() => insertLinePrefix('- '))}>
+                    <span aria-hidden="true">•</span><span>无序列表</span>
+                  </MenuItem>
+                  <MenuItem aria-label="有序列表" style={{ ...styles.formatMenuItem, color: c.textPrimary }} onClick={() => runFormatMenuAction(() => insertLinePrefix('1. '))}>
+                    <span aria-hidden="true">1.</span><span>有序列表</span>
+                  </MenuItem>
+                </MenuSurface>
+              ) : null}
+            </div>
+          ) : (
+            <>
+              <button type="button" style={styles.fmtButton} title="加粗" onClick={() => wrapSelection('**', '**')}>
+                <strong>B</strong>
+              </button>
+              <button type="button" style={styles.fmtButton} title="斜体" onClick={() => wrapSelection('*', '*')}>
+                <em>I</em>
+              </button>
+              <button type="button" style={styles.fmtButton} title="下划线" onClick={() => wrapSelection('<u>', '</u>')}>
+                <span style={{ textDecoration: 'underline' }}>U</span>
+              </button>
+              <button type="button" style={styles.fmtButton} title="代码块" onClick={() => wrapSelection('```\n', '\n```')}>
+                <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>&lt;/&gt;</span>
+              </button>
+              <span style={styles.fmtDivider} />
+              <button type="button" style={styles.fmtButton} title="无序列表" onClick={() => insertLinePrefix('- ')}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1" fill="#666"/><circle cx="4" cy="12" r="1" fill="#666"/><circle cx="4" cy="18" r="1" fill="#666"/></svg>
+              </button>
+              <button type="button" style={styles.fmtButton} title="有序列表" onClick={() => insertLinePrefix('1. ')}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="2" y="8" fill="#666" stroke="none" fontSize="8" fontFamily="sans-serif">1</text><text x="2" y="14" fill="#666" stroke="none" fontSize="8" fontFamily="sans-serif">2</text><text x="2" y="20" fill="#666" stroke="none" fontSize="8" fontFamily="sans-serif">3</text></svg>
+              </button>
+            </>
+          )}
           <span style={styles.fmtDivider} />
           <button type="button" style={styles.toolIcon} title="上传图片" onClick={() => fileInputRef.current?.click()}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
@@ -731,20 +1198,20 @@ export const MemoComposer = ({ defaultDisplayDate, onSubmit, existingTags = [] }
             }}
           />
           <label style={styles.selectWrap}>
-            <select aria-label="可见性" value={visibility} onChange={(event) => setVisibility(event.target.value as 'public' | 'private')} style={{ ...styles.select, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }}>
+            <select aria-label="可见性" value={visibility} onChange={(event) => { draftUserInputRef.current = true; setVisibility(event.target.value as 'public' | 'private'); }} style={{ ...styles.select, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }}>
               <option value="public">公开</option>
               <option value="private">私密</option>
             </select>
           </label>
-          <input aria-label="归属日期" type="date" value={displayDate} onChange={(event) => setDisplayDate(event.target.value)} style={{ ...styles.dateInput, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }} />
+          <input aria-label="归属日期" type="date" value={displayDate} onChange={(event) => { draftUserInputRef.current = true; setDisplayDate(event.target.value); }} style={{ ...styles.dateInput, background: c.inputBg, color: c.textTertiary, borderColor: c.borderMedium }} />
         </div>
         {hasDraft ? (
           <button type="button" style={{ ...styles.cancelButton, color: c.textMuted }} onClick={cancelDraft}>
             取消
           </button>
         ) : null}
-        <button type="button" style={{ ...styles.submitButton, ...(submitting ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }} onClick={handleSubmit} disabled={submitting} title={submitting ? '发布中...' : '发布'}>
-          {submitting ? <span style={{ fontSize: 12, color: '#fff' }}>...</span> : <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>}
+        <button type="button" style={{ ...styles.submitButton, ...(submitting || !canPublish ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }} onClick={handleSubmit} disabled={submitting || !canPublish} title={submitting ? '发布中...' : (authState === 'pending' ? '正在验证身份...' : (!canPublish ? '登录后发布' : '发布'))}>
+          {submitting ? <span style={{ fontSize: 12, color: '#fff' }}>...</span> : !canPublish ? <span aria-hidden="true">🔒</span> : <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>}
         </button>
       </div>
     </section>
@@ -845,6 +1312,43 @@ const styles: Record<string, React.CSSProperties> = {
     height: 16,
     background: '#e0e0e0',
     margin: '0 2px',
+  },
+  moreMenu: {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  moreButton: {
+    padding: '4px 8px',
+    minWidth: 'auto',
+  },
+  formatMenu: {
+    position: 'absolute',
+    left: 0,
+    bottom: 'calc(100% + 8px)',
+    zIndex: 2,
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 148,
+    padding: 4,
+    border: '1px solid',
+    borderRadius: 8,
+    boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+  },
+  formatMenuItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+    minHeight: 34,
+    padding: '6px 10px',
+    border: 'none',
+    borderRadius: 6,
+    background: 'transparent',
+    textAlign: 'left',
+    fontSize: 14,
+    cursor: 'pointer',
+    boxSizing: 'border-box',
   },
   toolIcon: {
     border: 'none',

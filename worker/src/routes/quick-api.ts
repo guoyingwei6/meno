@@ -1,12 +1,18 @@
 import { Hono } from 'hono';
-import { createMemo, trashMemo } from '../db/memo-repository';
+import { createAsset, getAssetByClientId } from '../db/asset-repository';
+import { createMemoWithOutcome, getMemoByClientId, normalizeClientId, trashMemo } from '../db/memo-repository';
 import type { WorkerBindings } from '../db/client';
 import { isApiKeyValid } from '../lib/auth';
-import { removeMemoFromKnowledgeBase, syncMemoToKnowledgeBase } from '../lib/ai-rag';
 import { markMemoImageOcrRemovedByMemo, syncMemoImageOcrTasks } from '../db/memo-image-ocr-repository';
 import { createMemoSlug } from '../lib/slug';
+import { mirrorExternalImages } from '../lib/asset-mirroring';
+import { createHighEntropyUploadKey, limitReadableStream, MAX_UPLOAD_BYTES, validateUpload } from '../lib/upload-policy';
+import { enqueueMemoKnowledgeSync, scheduleMemoKnowledgeSync } from '../lib/knowledge-sync-queue';
 
 export const quickApiRoutes = new Hono<{ Bindings: WorkerBindings }>();
+
+const MAX_MULTIPART_OVERHEAD_BYTES = 64 * 1024;
+const MAX_MULTIPART_REQUEST_BYTES = MAX_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES;
 
 const isUploadFile = (
   value: unknown,
@@ -19,40 +25,34 @@ const isUploadFile = (
     && typeof value.stream === 'function';
 };
 
-const swallowKnowledgeBaseError = async (task: Promise<void>) => {
+const swallowBackgroundError = async (task: Promise<void>) => {
   try {
     await task;
   } catch (error) {
-    console.error('Knowledge base sync failed', error);
+    console.error('Quick API background task failed', error);
   }
 };
 
-/** 把外部图片 URL 下载后上传到 R2，返回我们自己的 CDN URL；抓取失败的图片直接丢弃 */
-async function mirrorImages(env: WorkerBindings, urls: string[]): Promise<string[]> {
-  const results = await Promise.all(
-    urls.map(async (url) => {
-      try {
-        const res = await fetch(url, { headers: { Referer: url } });
-        if (!res.ok) return null;
-        const contentType = res.headers.get('content-type') || 'image/jpeg';
-        const ext = contentType.split('/')[1]?.split(';')[0] || 'jpg';
-        const key = `uploads/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        await env.ASSETS.put(key, res.body!, { httpMetadata: { contentType } });
-        const baseUrl = env.ASSET_PUBLIC_BASE_URL || `${env.API_ORIGIN}/api/assets`;
-        return `${baseUrl}/${key}`;
-      } catch {
-        return null;
-      }
-    })
-  );
-  return results.filter((u): u is string => u !== null);
-}
+const scheduleBackground = (c: { executionCtx?: ExecutionContext }, task: Promise<void>) => {
+  const safeTask = swallowBackgroundError(task);
+  try {
+    const waitUntil = c.executionCtx?.waitUntil?.bind(c.executionCtx);
+    if (waitUntil) {
+      waitUntil(safeTask);
+      return;
+    }
+  } catch {
+    // Fall through to the local best-effort scheduler.
+  }
+  void safeTask;
+};
 
 // Middleware: API token auth
 quickApiRoutes.use('/*', async (c, next) => {
   if (!isApiKeyValid(c.env, c.req.raw)) {
     return c.json({ message: 'Invalid API token' }, 401);
   }
+  c.header('Cache-Control', 'private, no-store');
   await next();
 });
 
@@ -72,6 +72,20 @@ quickApiRoutes.get('/memos', async (c) => {
     const d = c.req.query('display_date');
     return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : today;
   })();
+  let clientId: string | undefined;
+  try {
+    clientId = normalizeClientId(c.req.query('client_id'));
+  } catch (error) {
+    return c.json({ message: error instanceof Error ? error.message : 'Invalid client_id' }, 400);
+  }
+  if (clientId) {
+    const existing = await getMemoByClientId(c.env.DB, clientId);
+    if (existing) {
+      await enqueueMemoKnowledgeSync(c.env.DB, existing.id);
+      scheduleMemoKnowledgeSync(c.env, existing.id, (task) => scheduleBackground(c, task));
+      return c.json({ memo: existing }, 200);
+    }
+  }
 
   let finalContent = content;
   const imageUrlsRaw = c.req.query('image_urls');
@@ -83,21 +97,26 @@ quickApiRoutes.get('/memos', async (c) => {
     } else {
       imgs = decoded.split(',').filter(Boolean);
     }
-    const mirrored = await mirrorImages(c.env, imgs.map((u) => u.trim()));
-    const imgMarkdown = mirrored.map((url) => `![](${url})`).join('\n');
+    const mirrored = await mirrorExternalImages(c.env, imgs.map((u) => u.trim()));
+    const imgMarkdown = mirrored.map(({ url }) => `![](${url})`).join('\n');
     finalContent = finalContent ? `${finalContent}\n${imgMarkdown}` : imgMarkdown;
   }
 
-  const memo = await createMemo(c.env.DB, {
+  const outcome = await createMemoWithOutcome(c.env.DB, {
     slug: createMemoSlug(),
     content: finalContent,
     visibility,
     displayDate,
+    clientId,
   });
-  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility);
-  await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
+  const memo = outcome.memo;
+  if (outcome.created) {
+    scheduleBackground(c, syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility));
+  }
+  await enqueueMemoKnowledgeSync(c.env.DB, memo.id);
+  scheduleMemoKnowledgeSync(c.env, memo.id, (task) => scheduleBackground(c, task));
 
-  return c.json({ memo }, 201);
+  return c.json({ memo }, outcome.created ? 201 : 200);
 });
 
 /**
@@ -119,7 +138,23 @@ quickApiRoutes.post('/memos', async (c) => {
     visibility?: 'public' | 'private';
     images?: string[];
     displayDate?: string;
+    client_id?: string;
   }>();
+
+  let clientId: string | undefined;
+  try {
+    clientId = normalizeClientId(body.client_id);
+  } catch (error) {
+    return c.json({ message: error instanceof Error ? error.message : 'Invalid client_id' }, 400);
+  }
+  if (clientId) {
+    const existing = await getMemoByClientId(c.env.DB, clientId);
+    if (existing) {
+      await enqueueMemoKnowledgeSync(c.env.DB, existing.id);
+      scheduleMemoKnowledgeSync(c.env, existing.id, (task) => scheduleBackground(c, task));
+      return c.json({ memo: existing }, 200);
+    }
+  }
 
   let content = body.content || '';
   const visibility = body.visibility || 'public';
@@ -130,21 +165,26 @@ quickApiRoutes.post('/memos', async (c) => {
 
   // Append images as markdown (mirror external images to R2)
   if (body.images && body.images.length > 0) {
-    const mirrored = await mirrorImages(c.env, body.images);
-    const imgMarkdown = mirrored.map((url) => `![](${url})`).join('\n');
+    const mirrored = await mirrorExternalImages(c.env, body.images);
+    const imgMarkdown = mirrored.map(({ url }) => `![](${url})`).join('\n');
     content = content ? `${content}\n${imgMarkdown}` : imgMarkdown;
   }
 
-  const memo = await createMemo(c.env.DB, {
+  const outcome = await createMemoWithOutcome(c.env.DB, {
     slug: createMemoSlug(),
     content,
     visibility,
     displayDate,
+    clientId,
   });
-  await syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility);
-  await swallowKnowledgeBaseError(syncMemoToKnowledgeBase(c.env, memo.id));
+  const memo = outcome.memo;
+  if (outcome.created) {
+    scheduleBackground(c, syncMemoImageOcrTasks(c.env.DB, memo.id, memo.content, memo.visibility));
+  }
+  await enqueueMemoKnowledgeSync(c.env.DB, memo.id);
+  scheduleMemoKnowledgeSync(c.env, memo.id, (task) => scheduleBackground(c, task));
 
-  return c.json({ memo }, 201);
+  return c.json({ memo }, outcome.created ? 201 : 200);
 });
 
 /**
@@ -153,24 +193,76 @@ quickApiRoutes.post('/memos', async (c) => {
  * Returns: { url: string }
  */
 quickApiRoutes.post('/upload', async (c) => {
-  const formData = await c.req.formData();
-  const file = formData.get('file');
-
-  if (!isUploadFile(file)) {
-    return c.json({ message: 'No file provided' }, 400);
+  const rawContentLength = c.req.header('Content-Length');
+  if (rawContentLength !== undefined) {
+    const contentLength = Number(rawContentLength);
+    if (!Number.isSafeInteger(contentLength) || contentLength < 0) {
+      return c.json({ message: 'Invalid Content-Length' }, 400);
+    }
+    if (contentLength > MAX_MULTIPART_REQUEST_BYTES) {
+      return c.json({ message: `Upload request exceeds ${MAX_UPLOAD_BYTES} byte file limit` }, 413);
+    }
   }
 
-  const ext = file.name.split('.').pop() || 'bin';
-  const key = `uploads/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const formData = await c.req.formData();
+  const fileEntries = formData.getAll('file');
 
-  await c.env.ASSETS.put(key, file.stream(), {
-    httpMetadata: { contentType: file.type },
-  });
+  if (fileEntries.length !== 1 || !isUploadFile(fileEntries[0])) {
+    return c.json({ message: fileEntries.length > 1 ? 'Only one file is allowed' : 'No file provided' }, 400);
+  }
+  const file = fileEntries[0];
 
+  let clientId: string | undefined;
+  try {
+    clientId = normalizeClientId(formData.get('client_id'));
+  } catch (error) {
+    return c.json({ message: error instanceof Error ? error.message : 'Invalid client_id' }, 400);
+  }
+
+  const validation = validateUpload({ filename: file.name, mimeType: file.type, size: file.size });
+  if ('error' in validation) return c.json({ message: validation.error }, 400);
+
+  if (clientId) {
+    const existing = await getAssetByClientId(c.env.DB, clientId);
+    if (existing) return c.json({ url: existing.originalUrl, objectKey: existing.objectKey });
+  }
+
+  const key = createHighEntropyUploadKey(validation.extension);
   const baseUrl = c.env.ASSET_PUBLIC_BASE_URL || `${c.env.API_ORIGIN}/api/assets`;
   const url = `${baseUrl}/${key}`;
 
-  return c.json({ url });
+  try {
+    await c.env.ASSETS.put(key, limitReadableStream(file.stream(), MAX_UPLOAD_BYTES), {
+      httpMetadata: { contentType: file.type },
+    });
+    await createAsset(c.env.DB, {
+      clientId,
+      objectKey: key,
+      originalUrl: url,
+      mimeType: file.type,
+      size: file.size,
+    });
+  } catch (error) {
+    if (clientId) {
+      const existing = await getAssetByClientId(c.env.DB, clientId);
+      if (existing) {
+        try {
+          await c.env.ASSETS.delete(key);
+        } catch {
+          // Scheduled orphan GC can remove the losing object.
+        }
+        return c.json({ url: existing.originalUrl, objectKey: existing.objectKey });
+      }
+    }
+    try {
+      await c.env.ASSETS.delete(key);
+    } catch {
+      // Leave metadata/storage for scheduled cleanup if the delete itself fails.
+    }
+    throw error;
+  }
+
+  return c.json({ url, objectKey: key });
 });
 
 /**
@@ -184,7 +276,8 @@ quickApiRoutes.delete('/memos/:slug', async (c) => {
     .first<{ id: number }>();
   if (!row) return c.json({ message: 'Not found' }, 404);
   await trashMemo(c.env.DB, row.id);
-  await markMemoImageOcrRemovedByMemo(c.env.DB, row.id);
-  await swallowKnowledgeBaseError(removeMemoFromKnowledgeBase(c.env, row.id));
+  scheduleBackground(c, markMemoImageOcrRemovedByMemo(c.env.DB, row.id));
+  await enqueueMemoKnowledgeSync(c.env.DB, row.id);
+  scheduleMemoKnowledgeSync(c.env, row.id, (task) => scheduleBackground(c, task));
   return c.json({ success: true });
 });

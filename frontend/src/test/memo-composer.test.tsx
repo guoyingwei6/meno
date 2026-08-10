@@ -49,6 +49,7 @@ describe('MemoComposer', () => {
         content: '新笔记 #memo',
         visibility: 'private',
         displayDate: '2026-03-16',
+        client_id: expect.any(String),
       });
     });
   });
@@ -85,6 +86,7 @@ describe('MemoComposer', () => {
         content: '测试图片\n![](https://cdn.example.com/uploads/hello.png)',
         visibility: 'public',
         displayDate: '2026-03-25',
+        client_id: expect.any(String),
       });
     });
   });

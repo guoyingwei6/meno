@@ -2,8 +2,16 @@ import type { WorkerBindings } from '../db/client';
 import { getAuthorMemoById, updateMemo } from '../db/memo-repository';
 import { getMemoVoiceNoteByMemoId, listMemoVoiceNotesByStatuses, updateMemoVoiceNoteTranscript } from '../db/memo-voice-note-repository';
 import type { MemoVoiceNote } from '../../../shared/src/types';
+import { isPublicMemoAttachmentForModel } from './model-privacy';
 
 const TRANSCRIPTION_MODEL = '@cf/openai/whisper-large-v3-turbo';
+const MAX_TRANSCRIPTION_ATTEMPTS = 5;
+const TRANSCRIPTION_QUEUE_STATUSES: MemoVoiceNote['transcriptStatus'][] = ['pending', 'processing', 'failed'];
+
+const canProcessVoiceNote = (voiceNote: MemoVoiceNote) => {
+  return TRANSCRIPTION_QUEUE_STATUSES.includes(voiceNote.transcriptStatus)
+    && voiceNote.transcriptAttempts < MAX_TRANSCRIPTION_ATTEMPTS;
+};
 
 const toBase64 = (buffer: ArrayBuffer) => {
   let binary = '';
@@ -31,6 +39,15 @@ const extractTranscriptText = (response: unknown) => {
 };
 
 export const processVoiceNote = async (env: WorkerBindings, voiceNote: MemoVoiceNote) => {
+  if (!canProcessVoiceNote(voiceNote)) return;
+
+  // Keep private audio out of Workers AI by default. A queued voice note can
+  // outlive a visibility change, so this check belongs in the worker rather
+  // than only in the create/update routes.
+  if (!await isPublicMemoAttachmentForModel(env, voiceNote.memoId, voiceNote.objectKey)) {
+    return;
+  }
+
   if (!env.AI?.run) {
     await updateMemoVoiceNoteTranscript(env.DB, voiceNote.memoId, {
       transcriptStatus: 'not_available',
@@ -56,6 +73,17 @@ export const processVoiceNote = async (env: WorkerBindings, voiceNote: MemoVoice
     }
 
     const audioBuffer = await object.arrayBuffer();
+    // Re-check after reading the object and immediately before the model call
+    // to cover a public -> private change while the task was running.
+    if (!await isPublicMemoAttachmentForModel(env, voiceNote.memoId, voiceNote.objectKey)) {
+      await updateMemoVoiceNoteTranscript(env.DB, voiceNote.memoId, {
+        transcriptStatus: 'pending',
+        transcriptAttempts: voiceNote.transcriptAttempts,
+        transcriptError: 'Private memo transcription is disabled by default',
+      });
+      return;
+    }
+
     const result = await env.AI.run(TRANSCRIPTION_MODEL, {
       audio: toBase64(audioBuffer),
     });
@@ -89,14 +117,15 @@ export const processVoiceNote = async (env: WorkerBindings, voiceNote: MemoVoice
 export const processVoiceNoteByMemoId = async (env: WorkerBindings, memoId: number) => {
   const voiceNote = await getMemoVoiceNoteByMemoId(env.DB, memoId);
   if (!voiceNote) return;
-  if (!['pending', 'processing'].includes(voiceNote.transcriptStatus)) return;
+  if (!canProcessVoiceNote(voiceNote)) return;
   await processVoiceNote(env, voiceNote);
 };
 
 export const processVoiceNoteQueue = async (env: WorkerBindings) => {
-  const pending = await listMemoVoiceNotesByStatuses(env.DB, ['pending', 'processing'], 20);
+  const queued = await listMemoVoiceNotesByStatuses(env.DB, TRANSCRIPTION_QUEUE_STATUSES, 20);
 
-  for (const voiceNote of pending) {
+  for (const voiceNote of queued) {
+    if (!canProcessVoiceNote(voiceNote)) continue;
     await processVoiceNote(env, voiceNote);
   }
 };

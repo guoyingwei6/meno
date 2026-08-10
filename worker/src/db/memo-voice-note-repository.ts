@@ -176,7 +176,16 @@ export const listMemoVoiceNotesByStatuses = async (
   if (statuses.length === 0) return [];
   const placeholders = statuses.map(() => '?').join(', ');
   const { results } = await db
-    .prepare(`SELECT * FROM memo_voice_notes WHERE transcript_status IN (${placeholders}) ORDER BY updated_at ASC LIMIT ?`)
+    .prepare(
+      `SELECT memo_voice_notes.*
+       FROM memo_voice_notes
+       INNER JOIN memos ON memos.id = memo_voice_notes.memo_id
+       WHERE memo_voice_notes.transcript_status IN (${placeholders})
+         AND memos.deleted_at IS NULL
+         AND memos.visibility = 'public'
+       ORDER BY memo_voice_notes.updated_at ASC
+       LIMIT ?`,
+    )
     .bind(...statuses, limit)
     .all();
 

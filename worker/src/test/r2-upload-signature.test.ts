@@ -19,6 +19,7 @@ describe('R2 upload target route', () => {
         headers: {
           'Content-Type': 'application/json',
           Cookie: 'meno_session=valid-author-session',
+          Origin: 'https://meno.guoyingwei.top',
         },
         body: JSON.stringify({ filename: 'hello.png', contentType: 'image/png' }),
       },
@@ -28,6 +29,6 @@ describe('R2 upload target route', () => {
     expect(response.status).toBe(200);
     const payload = (await response.json()) as UploadPayload;
     expect(payload.uploadUrl).toContain('https://cdn.example.com/uploads/');
-    expect(payload.objectKey).toMatch(/^uploads\/\d{4}\/\d{2}\/\d{14}\d{3}\.png$/);
+    expect(payload.objectKey).toMatch(/^uploads\/\d{4}\/\d{2}\/[0-9a-f]{64}\.png$/);
   });
 });

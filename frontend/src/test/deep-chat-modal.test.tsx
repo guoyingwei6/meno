@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DeepChatModal } from '../components/DeepChatModal';
 import { HomePage } from '../pages/HomePage';
 
 beforeEach(() => {
@@ -130,6 +131,66 @@ beforeEach(() => {
 });
 
 describe('Deep chat modal', () => {
+  const renderDeepChat = (props: { embedded?: boolean; onClose?: () => void } = {}) => {
+    const queryClient = new QueryClient();
+
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <DeepChatModal onOpenAiConfig={vi.fn()} {...props} />
+      </QueryClientProvider>,
+    );
+  };
+
+  it('renders the non-embedded view as a tokenized accessible dialog with focus management', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    const onClose = vi.fn();
+
+    const { container, unmount } = renderDeepChat({ onClose });
+    const dialog = screen.getByRole('dialog', { name: '深度对话' });
+    const closeButton = screen.getByRole('button', { name: '关闭深度对话' });
+    const sendButton = screen.getByRole('button', { name: '发送' });
+
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(closeButton).toHaveFocus();
+
+    fireEvent.focus(sendButton);
+    expect(sendButton.style.borderRadius).toBe('8px');
+    expect(sendButton.style.boxShadow).toContain('0 0 0 3px');
+
+    fireEvent.keyDown(sendButton, { key: 'Tab' });
+    expect(closeButton).toHaveFocus();
+    fireEvent.keyDown(closeButton, { key: 'Tab', shiftKey: true });
+    expect(sendButton).toHaveFocus();
+
+    fireEvent.click(container.firstElementChild!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(2);
+
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+
+  it('keeps embedded mode as a page panel without modal semantics, overlay, or focus takeover', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    const onClose = vi.fn();
+
+    const { container } = renderDeepChat({ embedded: true, onClose });
+
+    expect(screen.queryByRole('dialog', { name: '深度对话' })).not.toBeInTheDocument();
+    expect(container.firstElementChild).not.toHaveStyle({ position: 'fixed' });
+    expect(document.activeElement).toBe(opener);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+    opener.remove();
+  });
+
   it('opens from sidebar and chats with the knowledge base', async () => {
     const queryClient = new QueryClient();
 

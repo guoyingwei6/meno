@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomePage } from '../pages/HomePage';
@@ -55,6 +55,8 @@ const LocationProbe = () => {
 
 beforeEach(() => {
   assignMock.mockReset();
+  localStorage.clear();
+  sessionStorage.clear();
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
@@ -163,7 +165,7 @@ describe('HomePage interactions', () => {
     fireEvent.click(targetArticle!.parentElement!);
   });
 
-  it('requests only the first memo page on initial load', async () => {
+  it('requests only the first public memo page while auth resolves', async () => {
     const queryClient = new QueryClient();
 
     render(
@@ -176,7 +178,46 @@ describe('HomePage interactions', () => {
 
     await screen.findByRole('button', { name: '#serverless' });
 
-    expect(fetch).toHaveBeenCalledWith('/api/dashboard/memos?view=public&limit=20', { credentials: 'include' });
+    expect(fetch).toHaveBeenCalledWith('/api/public/memos?limit=20&sort=display-desc');
+  });
+
+  it('sends feed sort and boolean filters to the server and preserves its page order', async () => {
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <HomePage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByRole('button', { name: '#serverless' });
+    fireEvent.click(screen.getByRole('button', { name: '📋' }));
+    fireEvent.click(await screen.findByRole('button', { name: '有/无标签' }));
+    fireEvent.click(screen.getByRole('button', { name: '有/无图片' }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        '/api/dashboard/memos?view=public&limit=20&sort=display-desc&has_images=true&has_tags=true',
+        { credentials: 'include' },
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /展示时间/ }));
+    fireEvent.click(screen.getByRole('button', { name: '创建时间' }));
+    fireEvent.click(screen.getByRole('button', { name: /创建时间/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^创建时间/ }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        '/api/dashboard/memos?view=public&limit=20&sort=created-asc&has_images=true&has_tags=true',
+        { credentials: 'include' },
+      );
+      const articleTexts = Array.from(document.querySelectorAll('article')).map((article) => article.textContent ?? '');
+      expect(articleTexts[0]).toContain('Second public memo');
+      expect(articleTexts[1]).toContain('First public memo');
+    });
   });
 
   it('navigates to tag page when a tag pill is clicked', async () => {
@@ -191,7 +232,9 @@ describe('HomePage interactions', () => {
       </QueryClientProvider>,
     );
 
-    const tagPill = await screen.findByRole('button', { name: '#serverless' });
+    const memoArticle = (await screen.findByText('Second public memo')).closest('article');
+    expect(memoArticle).not.toBeNull();
+    const tagPill = within(memoArticle!).getByRole('button', { name: '#serverless' });
     fireEvent.click(tagPill);
 
     await waitFor(() => {
@@ -214,7 +257,7 @@ describe('HomePage interactions', () => {
     fireEvent.click(await screen.findByRole('button', { name: '私密笔记' }));
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith('/api/dashboard/memos?view=private&limit=20', { credentials: 'include' });
+      expect(fetch).toHaveBeenCalledWith('/api/dashboard/memos?view=private&limit=20&sort=display-desc', { credentials: 'include' });
     });
   });
 
@@ -235,7 +278,7 @@ describe('HomePage interactions', () => {
     await waitFor(() => {
       const now = new Date();
       const currentMonthDay = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-16`;
-      expect(fetch).toHaveBeenLastCalledWith(`/api/dashboard/memos?view=public&date=${currentMonthDay}&limit=20`, { credentials: 'include' });
+      expect(fetch).toHaveBeenLastCalledWith(`/api/dashboard/memos?view=public&date=${currentMonthDay}&limit=20&sort=display-desc`, { credentials: 'include' });
     });
   });
 });

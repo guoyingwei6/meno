@@ -41,11 +41,23 @@ describe('MemoCard private share token', () => {
     render(<MemoCard memo={privateMemo} isAuthor />);
 
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '分享' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '分享' }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/dashboard/memos/3/share', expect.objectContaining({ method: 'POST', credentials: 'include' }));
     });
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('https://meno.test/share/abc123');
+  });
+
+  it('exposes a revoke action for private memo share links', async () => {
+    render(<MemoCard memo={privateMemo} isAuthor />);
+
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '撤销分享' }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('/api/dashboard/memos/3/share', expect.objectContaining({ method: 'DELETE', credentials: 'include' }));
+    });
+    expect(await screen.findByText('分享链接已撤销')).toBeInTheDocument();
   });
 });

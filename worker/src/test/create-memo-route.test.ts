@@ -31,6 +31,7 @@ describe('POST /api/memos', () => {
       headers: {
         'Content-Type': 'application/json',
         Cookie: 'meno_session=valid-author-session',
+        Origin: 'https://meno.guoyingwei.top',
       },
       body: JSON.stringify({
         content: 'Hello #meno',
@@ -51,6 +52,54 @@ describe('POST /api/memos', () => {
         tags: ['meno'],
       }),
     );
+  });
+
+  it('is idempotent when the same client_id is retried', async () => {
+    const env = await createTestEnv();
+    const request = (content: string) => app.request('http://localhost/api/memos', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'meno_session=valid-author-session',
+        Origin: 'https://meno.guoyingwei.top',
+      },
+      body: JSON.stringify({
+        content,
+        visibility: 'private',
+        displayDate: '2026-03-24',
+        client_id: 'composer-tab-1',
+      }),
+    }, env);
+
+    const first = await request('Offline body #one');
+    const firstPayload = await first.json() as { memo: MemoDetail };
+    const retry = await request('Changed body from a retry');
+    const retryPayload = await retry.json() as { memo: MemoDetail };
+
+    expect(first.status).toBe(201);
+    expect(retry.status).toBe(200);
+    expect(retryPayload.memo.id).toBe(firstPayload.memo.id);
+    expect((await env.DB.prepare('SELECT COUNT(*) as count FROM memos WHERE client_id = ?').bind('composer-tab-1').first<{ count: number }>())?.count).toBe(1);
+  });
+
+  it('rejects a memo containing more than eight images', async () => {
+    const env = await createTestEnv();
+    const response = await app.request('http://localhost/api/memos', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'meno_session=valid-author-session',
+        Origin: 'https://meno.guoyingwei.top',
+      },
+      body: JSON.stringify({
+        content: Array.from({ length: 9 }, (_, index) => `![](https://cdn.example.com/${index}.png)`).join('\n'),
+        visibility: 'private',
+        displayDate: '2026-03-24',
+      }),
+    }, env);
+
+    expect(response.status).toBe(400);
+    expect((await env.DB.prepare('SELECT COUNT(*) as count FROM memos WHERE slug NOT IN (?, ?, ?)').bind('public-memo-2', 'public-memo-1', 'private-memo-1').first<{ count: number }>())?.count).toBe(0);
   });
 
   it('triggers immediate async transcription for newly created voice notes', async () => {
@@ -75,10 +124,11 @@ describe('POST /api/memos', () => {
       headers: {
         'Content-Type': 'application/json',
         Cookie: 'meno_session=valid-author-session',
+        Origin: 'https://meno.guoyingwei.top',
       },
       body: JSON.stringify({
         content: '',
-        visibility: 'private',
+        visibility: 'public',
         displayDate: '2026-04-14',
         voiceNote: {
           objectKey: 'voice-notes/immediate.m4a',
@@ -93,7 +143,9 @@ describe('POST /api/memos', () => {
     } as unknown as ExecutionContext);
 
     expect(response.status).toBe(201);
-    expect(waitUntil).toHaveBeenCalledTimes(1);
+    // OCR, knowledge-base sync and voice transcription are all non-blocking
+    // after the Memo row has been committed.
+    expect(waitUntil).toHaveBeenCalledTimes(3);
     await Promise.all(scheduledTasks);
 
     const payload = (await response.json()) as { memo: MemoDetail };

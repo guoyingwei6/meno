@@ -1,7 +1,9 @@
 import type { OcrQueueStatus } from '../../../shared/src/types';
-import { claimPendingMemoImageOcrTasks, countMemoImageOcrProcessedOn, getMemoImageOcrQueueCounts, markMemoImageOcrDone, markMemoImageOcrFailed, seedMissingMemoImageOcrTasks } from '../db/memo-image-ocr-repository';
+import { claimPendingMemoImageOcrTasks, countMemoImageOcrProcessedOn, getMemoImageOcrQueueCounts, markMemoImageOcrDone, markMemoImageOcrFailed, markMemoImageOcrRemoved, markMemoImageOcrRemovedByMemo, seedMissingMemoImageOcrTasks } from '../db/memo-image-ocr-repository';
+import { getAuthorMemoById } from '../db/memo-repository';
 import { syncMemoToKnowledgeBase } from './ai-rag';
 import type { WorkerBindings } from '../db/client';
+import { isPublicMemoAttachmentForModel, isPublicMemoForModel } from './model-privacy';
 
 const DEFAULT_OCR_DAILY_LIMIT = 20;
 const DEFAULT_OCR_BATCH_SIZE = 5;
@@ -62,12 +64,25 @@ const loadImageBlob = async (env: WorkerBindings, imageUrl: string): Promise<{ b
   };
 };
 
-const runOcr = async (env: WorkerBindings, imageUrl: string): Promise<string> => {
+const runOcr = async (env: WorkerBindings, memoId: number, imageUrl: string): Promise<string | null> => {
   if (!env.AI?.toMarkdown) {
     throw new Error('Workers AI Markdown Conversion 未配置');
   }
 
+  // A public memo may still point at an object that is also private or
+  // deleted elsewhere. Check the object relationship before reading bytes.
+  if (!await isPublicMemoAttachmentForModel(env, memoId, imageUrl)) {
+    return null;
+  }
+
   const file = await loadImageBlob(env, imageUrl);
+  // A task may have been claimed while the memo or asset was public and then
+  // become restricted before the model call. Re-check immediately before
+  // handing image bytes to Workers AI.
+  if (!await isPublicMemoAttachmentForModel(env, memoId, imageUrl)) {
+    return null;
+  }
+
   const result = await env.AI.toMarkdown({
     name: file.name,
     blob: file.blob,
@@ -106,7 +121,23 @@ export const processMemoImageOcrQueue = async (env: WorkerBindings): Promise<{ p
 
   for (const task of tasks) {
     try {
-      const text = await runOcr(env, task.imageUrl);
+      if (!isPublicMemoForModel(await getAuthorMemoById(env.DB, task.memoId))) {
+        await markMemoImageOcrRemovedByMemo(env.DB, task.memoId);
+        skipped++;
+        continue;
+      }
+
+      const text = await runOcr(env, task.memoId, task.imageUrl);
+      if (text === null) {
+        if (!isPublicMemoForModel(await getAuthorMemoById(env.DB, task.memoId))) {
+          await markMemoImageOcrRemovedByMemo(env.DB, task.memoId);
+        } else {
+          await markMemoImageOcrRemoved(env.DB, task.id);
+        }
+        skipped++;
+        continue;
+      }
+
       if (!text) {
         skipped++;
       }

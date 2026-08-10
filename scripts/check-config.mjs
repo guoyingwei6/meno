@@ -3,7 +3,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const localConfigPath = resolve(rootDir, 'worker/wrangler.local.toml');
+const configArg = process.argv.find((arg) => arg.startsWith('--config='));
+const configuredPath = configArg?.slice('--config='.length);
+const localConfigPath = resolve(rootDir, configuredPath || 'worker/wrangler.local.toml');
+const configLabel = configuredPath || 'worker/wrangler.local.toml';
 const templateConfigPath = resolve(rootDir, 'worker/wrangler.toml');
 const deployMode = process.argv.includes('--deploy');
 
@@ -47,11 +50,11 @@ const isPlaceholder = (value) => {
 };
 
 if (!localConfig) {
-  addError('worker/wrangler.local.toml is missing. Deployment must use the local config, not worker/wrangler.toml.');
+  addError(`${configLabel} is missing. Deployment must use real local bindings, not worker/wrangler.toml.`);
 } else {
   for (const section of ['[ai]', '[[d1_databases]]', '[[r2_buckets]]', '[[vectorize]]', '[vars]']) {
     if (!hasSection(localConfig, section)) {
-      addError(`worker/wrangler.local.toml is missing ${section}.`);
+      addError(`${configLabel} is missing ${section}.`);
     }
   }
 
@@ -72,14 +75,14 @@ if (!localConfig) {
   for (const [key, label] of requiredValues) {
     const value = readValue(localConfig, key);
     if (isPlaceholder(value)) {
-      addError(`${label} (${key}) is missing or still a placeholder in worker/wrangler.local.toml.`);
+      addError(`${label} (${key}) is missing or still a placeholder in ${configLabel}.`);
     }
   }
 
   for (const key of ['GITHUB_CLIENT_SECRET', 'SESSION_SECRET', 'API_TOKEN']) {
     const value = readValue(localConfig, key);
     if (!value) {
-      addWarning(`${key} is not present in worker/wrangler.local.toml. Make sure it is configured as a Wrangler secret before deploy.`);
+      addWarning(`${key} is not present in ${configLabel}. Make sure it is configured as a Wrangler secret before deploy.`);
     } else if (isPlaceholder(value)) {
       const message = `${key} appears to be a placeholder. Set a real secret before production deploy.`;
       if (deployMode) {
@@ -88,7 +91,7 @@ if (!localConfig) {
         addWarning(message);
       }
     } else {
-      const message = `${key} is present in worker/wrangler.local.toml. Move it to Wrangler secrets before deploy because Wrangler may print [vars] values during dry-run/deploy. Value was not printed by this checker.`;
+      const message = `${key} is present in ${configLabel}. Move it to Wrangler secrets before deploy because Wrangler may print [vars] values during dry-run/deploy. Value was not printed by this checker.`;
       if (deployMode) {
         addError(message);
       } else {

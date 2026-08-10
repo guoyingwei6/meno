@@ -2,12 +2,52 @@ import { getSessionById } from '../db/session-repository';
 import type { WorkerBindings } from '../db/client';
 
 export const extractSessionId = (cookieHeader: string | undefined) => {
-  const match = cookieHeader?.match(/meno_session=([^;]+)/);
-  return match?.[1] ?? null;
+  const match = cookieHeader?.match(/(?:^|;\s*)meno_session=([^;]*)/);
+  const value = match?.[1]?.trim();
+  return value || null;
 };
 
-export const isAuthorSession = (cookieHeader: string | undefined) => {
-  return extractSessionId(cookieHeader) !== null;
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://meno-680.pages.dev',
+  'http://127.0.0.1:5173',
+  'http://localhost:5173',
+] as const;
+
+const normalizeOrigin = (value: string | undefined | null) => {
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Keep CORS and the CSRF Origin check on one allow-list. APP_ORIGIN is the
+ * deployment-time source of truth; the Pages preview and local dev origins
+ * remain explicitly supported for existing development workflows.
+ */
+export const getAllowedOrigins = (env: Pick<WorkerBindings, 'APP_ORIGIN'>) => {
+  const origins = new Set<string>();
+  const appOrigin = normalizeOrigin(env.APP_ORIGIN);
+  if (appOrigin) origins.add(appOrigin);
+
+  for (const origin of DEFAULT_ALLOWED_ORIGINS) {
+    origins.add(origin);
+  }
+
+  return origins;
+};
+
+export const isAllowedOrigin = (
+  env: Pick<WorkerBindings, 'APP_ORIGIN'>,
+  origin: string | undefined | null,
+) => {
+  const normalized = normalizeOrigin(origin);
+  return normalized !== null && getAllowedOrigins(env).has(normalized);
 };
 
 export const getViewerPayload = () => ({
@@ -33,7 +73,7 @@ export const isApiKeyValid = (env: WorkerBindings, request: Request) => {
   return url.searchParams.get('key') === token;
 };
 
-export const resolveAuthorSession = async (env: WorkerBindings, cookieHeader: string | undefined) => {
+export const resolveAuthorSession = async (env: Pick<WorkerBindings, 'DB'>, cookieHeader: string | undefined) => {
   const sessionId = extractSessionId(cookieHeader);
   if (!sessionId) {
     return null;

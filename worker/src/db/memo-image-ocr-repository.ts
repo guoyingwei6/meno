@@ -178,6 +178,19 @@ export const markMemoImageOcrDone = async (db: D1Database, id: number, text: str
     .run();
 };
 
+/** Mark one attachment as intentionally excluded without dropping other public images on the memo. */
+export const markMemoImageOcrRemoved = async (db: D1Database, id: number): Promise<void> => {
+  await db
+    .prepare(
+      `UPDATE memo_image_ocr
+       SET status = 'removed',
+           updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(new Date().toISOString(), id)
+    .run();
+};
+
 export const markMemoImageOcrFailed = async (db: D1Database, id: number, attemptCount: number, message: string): Promise<void> => {
   const now = new Date().toISOString();
   const nextRetryAt = new Date(Date.now() + Math.min(24, 2 ** Math.max(0, attemptCount)) * 60 * 60 * 1000).toISOString();

@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
 import {
-  createMemo,
+  createMemoWithOutcome,
+  getMemoByClientId,
   getAuthorMemoBySlug,
   listAuthorMemos,
+  normalizeClientId,
   searchAuthorMemos,
   trashMemo,
   updateMemo,
@@ -10,7 +12,9 @@ import {
 import type { WorkerBindings } from '../db/client';
 import { isApiKeyValid } from '../lib/auth';
 import { createMemoSlug } from '../lib/slug';
-import { syncMemoImageOcrTasks } from '../db/memo-image-ocr-repository';
+import { markMemoImageOcrRemovedByMemo, syncMemoImageOcrTasks } from '../db/memo-image-ocr-repository';
+import { mirrorExternalImages } from '../lib/asset-mirroring';
+import { enqueueMemoKnowledgeSync, scheduleMemoKnowledgeSync } from '../lib/knowledge-sync-queue';
 
 export const mcpRoutes = new Hono<{ Bindings: WorkerBindings }>();
 
@@ -63,6 +67,7 @@ const TOOLS = [
           items: { type: 'string' },
           description: 'Array of image URLs to attach. Images are mirrored to storage and appended as markdown.',
         },
+        client_id: { type: 'string', description: 'Stable client id for idempotent retries (1-128 chars).' },
       },
       required: ['content'],
     },
@@ -94,35 +99,14 @@ const TOOLS = [
   },
 ];
 
-// --- Image mirroring (download external URLs → R2) ---
-
-async function mirrorImages(env: WorkerBindings, urls: string[]): Promise<string[]> {
-  const results = await Promise.all(
-    urls.map(async (url) => {
-      try {
-        const res = await fetch(url, { headers: { Referer: url } });
-        if (!res.ok) return null;
-        const contentType = res.headers.get('content-type') || 'image/jpeg';
-        const ext = contentType.split('/')[1]?.split(';')[0] || 'jpg';
-        const key = `uploads/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        await env.ASSETS.put(key, res.body!, { httpMetadata: { contentType } });
-        const baseUrl = env.ASSET_PUBLIC_BASE_URL || `${env.API_ORIGIN}/api/assets`;
-        return `${baseUrl}/${key}`;
-      } catch {
-        return null;
-      }
-    }),
-  );
-  return results.filter((u): u is string => u !== null);
-}
-
 // --- Tool handlers ---
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
+type ScheduleTask = (task: Promise<void>) => void;
 
 const toolHandlers: Record<
   string,
-  (env: WorkerBindings, args: Record<string, unknown>) => Promise<ToolResult>
+  (env: WorkerBindings, args: Record<string, unknown>, schedule?: ScheduleTask) => Promise<ToolResult>
 > = {
   async list_memos(env, args) {
     const db = env.DB;
@@ -165,8 +149,17 @@ const toolHandlers: Record<
     return { content: [{ type: 'text', text: JSON.stringify(memo, null, 2) }] };
   },
 
-  async create_memo(env, args) {
+  async create_memo(env, args, schedule = (task) => { void task; }) {
     const db = env.DB;
+    const clientId = normalizeClientId(args.client_id);
+    if (clientId) {
+      const existing = await getMemoByClientId(db, clientId);
+      if (existing) {
+        await enqueueMemoKnowledgeSync(db, existing.id);
+        scheduleMemoKnowledgeSync(env, existing.id, schedule);
+        return { content: [{ type: 'text', text: JSON.stringify(existing, null, 2) }] };
+      }
+    }
     const today = new Date().toISOString().slice(0, 10);
     const displayDate =
       args.displayDate && /^\d{4}-\d{2}-\d{2}$/.test(args.displayDate as string)
@@ -176,24 +169,30 @@ const toolHandlers: Record<
     let content = args.content as string;
     const imageUrls = args.images as string[] | undefined;
     if (imageUrls && imageUrls.length > 0) {
-      const mirrored = await mirrorImages(env, imageUrls);
+      const mirrored = await mirrorExternalImages(env, imageUrls);
       if (mirrored.length > 0) {
-        const imgMarkdown = mirrored.map((url) => `![](${url})`).join('\n');
+        const imgMarkdown = mirrored.map(({ url }) => `![](${url})`).join('\n');
         content = content ? `${content}\n${imgMarkdown}` : imgMarkdown;
       }
     }
 
-    const memo = await createMemo(db, {
+    const outcome = await createMemoWithOutcome(db, {
       slug: createMemoSlug(),
       content,
       visibility: (args.visibility as 'public' | 'private') || 'public',
       displayDate,
+      clientId,
     });
-    await syncMemoImageOcrTasks(db, memo.id, memo.content, memo.visibility);
+    const memo = outcome.memo;
+    if (outcome.created) {
+      schedule(syncMemoImageOcrTasks(db, memo.id, memo.content, memo.visibility));
+    }
+    await enqueueMemoKnowledgeSync(db, memo.id);
+    scheduleMemoKnowledgeSync(env, memo.id, schedule);
     return { content: [{ type: 'text', text: JSON.stringify(memo, null, 2) }] };
   },
 
-  async update_memo(env, args) {
+  async update_memo(env, args, schedule = (task) => { void task; }) {
     const db = env.DB;
     const id = args.id as number;
     const input: { content?: string; visibility?: 'public' | 'private'; displayDate?: string } = {};
@@ -205,19 +204,24 @@ const toolHandlers: Record<
     if (!memo) {
       return { content: [{ type: 'text', text: 'Memo not found' }], isError: true };
     }
-    if (input.content !== undefined) {
-      await syncMemoImageOcrTasks(db, memo.id, memo.content, memo.visibility);
+    if (input.content !== undefined || input.visibility !== undefined) {
+      schedule(syncMemoImageOcrTasks(db, memo.id, memo.content, memo.visibility));
     }
+    await enqueueMemoKnowledgeSync(db, memo.id);
+    scheduleMemoKnowledgeSync(env, memo.id, schedule);
     return { content: [{ type: 'text', text: JSON.stringify(memo, null, 2) }] };
   },
 
-  async delete_memo(env, args) {
+  async delete_memo(env, args, schedule = (task) => { void task; }) {
     const db = env.DB;
     const id = args.id as number;
     const deleted = await trashMemo(db, id);
     if (!deleted) {
       return { content: [{ type: 'text', text: 'Memo not found' }], isError: true };
     }
+    schedule(markMemoImageOcrRemovedByMemo(db, id));
+    await enqueueMemoKnowledgeSync(db, id);
+    scheduleMemoKnowledgeSync(env, id, schedule);
     return { content: [{ type: 'text', text: `Memo ${id} moved to trash` }] };
   },
 };
@@ -257,7 +261,7 @@ const SERVER_INFO = {
   version: '1.0.0',
 };
 
-const handleMcpRequest = async (env: WorkerBindings, req: JsonRpcRequest) => {
+const handleMcpRequest = async (env: WorkerBindings, req: JsonRpcRequest, schedule: ScheduleTask = (task) => { void task; }) => {
   const isNotification = req.id === undefined;
 
   switch (req.method) {
@@ -283,7 +287,7 @@ const handleMcpRequest = async (env: WorkerBindings, req: JsonRpcRequest) => {
         return jsonRpcError(req.id, -32602, `Unknown tool: ${toolName}`);
       }
       try {
-        const result = await handler(env, toolArgs);
+        const result = await handler(env, toolArgs, schedule);
         return jsonRpcSuccess(req.id, result);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Internal error';
@@ -309,6 +313,7 @@ mcpRoutes.use('/*', async (c, next) => {
   if (!isApiKeyValid(c.env, c.req.raw)) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
+  c.header('Cache-Control', 'private, no-store');
   await next();
 });
 
@@ -322,16 +327,31 @@ mcpRoutes.post('/', async (c) => {
   }
 
   const isNotification = body.id === undefined;
+  const schedule: ScheduleTask = (task) => {
+    const safeTask = task.catch((error) => {
+      console.error('MCP background task failed', error);
+    });
+    try {
+      const waitUntil = c.executionCtx?.waitUntil?.bind(c.executionCtx);
+      if (waitUntil) {
+        waitUntil(safeTask);
+        return;
+      }
+    } catch {
+      // Local test adapters do not provide an execution context.
+    }
+    void safeTask;
+  };
 
   // Handle initialize: create session
   if (body.method === 'initialize') {
     const sessionId = generateSessionId();
     activeSessions.add(sessionId);
-    const result = await handleMcpRequest(c.env, body);
+    const result = await handleMcpRequest(c.env, body, schedule);
     return c.json(result, 200, { 'Mcp-Session-Id': sessionId });
   }
 
-  const result = await handleMcpRequest(c.env, body);
+  const result = await handleMcpRequest(c.env, body, schedule);
 
   // Notifications get 202 Accepted with no body
   if (result === null) {

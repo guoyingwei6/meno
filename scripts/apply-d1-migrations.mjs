@@ -1,60 +1,52 @@
-import { readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import path from 'node:path';
 
-const args = new Map();
+const options = new Map();
 for (const arg of process.argv.slice(2)) {
   const [key, value] = arg.split('=');
-  if (key.startsWith('--')) args.set(key.slice(2), value ?? '');
+  if (key.startsWith('--')) options.set(key.slice(2), value ?? '');
 }
 
-const config = args.get('config') || 'worker/wrangler.ci.toml';
-const database = args.get('database') || 'meno';
-const migrationsDir = args.get('dir') || 'worker/migrations';
+const config = options.get('config');
+const database = options.get('database') || 'meno';
+const target = options.has('remote') ? 'remote' : options.has('local') ? 'local' : null;
+
+if (!target || (options.has('remote') && options.has('local'))) {
+  console.error('Specify exactly one migration target: --remote or --local.');
+  process.exit(1);
+}
+
+if (!config) {
+  console.error('Specify --config=<path> explicitly; CI and local verification use different Wrangler configs.');
+  process.exit(1);
+}
+
+if (target === 'remote' && options.has('persist-to')) {
+  console.error('--persist-to is only valid with --local.');
+  process.exit(1);
+}
+
 const wrangler = process.platform === 'win32' ? 'node_modules/.bin/wrangler.cmd' : './node_modules/.bin/wrangler';
+const args = [
+  'd1',
+  'migrations',
+  'apply',
+  database,
+  `--${target}`,
+  '--config',
+  config,
+];
 
-const duplicateColumnTolerated = new Set([
-  '002_add_pinned.sql',
-  '003_add_favorited.sql',
-]);
+const persistTo = options.get('persist-to');
+if (persistTo) args.push('--persist-to', persistTo);
 
-const migrationFiles = readdirSync(migrationsDir)
-  .filter((file) => file.endsWith('.sql'))
-  .sort();
+console.log(`Applying D1 migrations through Wrangler's ledger (${target}): ${database}`);
+const result = spawnSync(wrangler, args, {
+  env: {
+    ...process.env,
+    CI: '1',
+    WRANGLER_SEND_METRICS: 'false',
+  },
+  stdio: 'inherit',
+});
 
-for (const file of migrationFiles) {
-  const filePath = path.join(migrationsDir, file);
-  console.log(`Applying D1 migration: ${file}`);
-  const result = spawnSync(wrangler, [
-    'd1',
-    'execute',
-    database,
-    '--remote',
-    '--config',
-    config,
-    '--file',
-    filePath,
-  ], {
-    env: {
-      ...process.env,
-      CI: '1',
-      WRANGLER_SEND_METRICS: 'false',
-    },
-    encoding: 'utf8',
-  });
-
-  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
-  if (result.status === 0) {
-    continue;
-  }
-  if (duplicateColumnTolerated.has(file) && /duplicate column name/i.test(output)) {
-    console.log(`Skipping already-applied legacy migration: ${file}`);
-    continue;
-  }
-
-  process.stdout.write(result.stdout ?? '');
-  process.stderr.write(result.stderr ?? '');
-  process.exit(result.status ?? 1);
-}
-
-console.log('D1 migrations applied.');
+process.exit(result.status ?? 1);

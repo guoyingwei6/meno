@@ -1,18 +1,42 @@
-import ReactMarkdown from 'react-markdown';
-import rehypeRaw from 'rehype-raw';
 import { createPortal } from 'react-dom';
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, memo, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getCaretCoords, getRecentTags, recordRecentTag } from '../lib/caret';
-import { createMemoShare, uploadFile } from '../lib/api';
-import { extractMarkdownImageUrls, shouldRenderMarkdown, stripMarkdownImageSyntax, stripTagSyntax } from '../lib/content';
+import { createMemoShare, revokeMemoShare, uploadFile } from '../lib/api';
+import { extractMarkdownImageUrls, shouldRenderMarkdown, stripHtmlTags, stripMarkdownImageSyntax, stripTagSyntax } from '../lib/content';
 import { getImagePreviewUrl } from '../lib/image-preview';
 import { SortableImagePreviewList } from './SortableImagePreviewList';
 import type { MemoSummary } from '../types/shared';
-import { useTheme, colors } from '../lib/theme';
+import { designTokens, useTheme } from '../lib/theme';
 import { getAiConfig, chatCompletionsUrl } from '../lib/ai-config';
+import { Button } from './ui/Button';
+import { IconButton } from './ui/IconButton';
+import { MenuItem, MenuSurface } from './ui/Menu';
+import { Toast } from './ui/Toast';
+
+const LazySafeMarkdown = lazy(() => import('./SafeMarkdown').then((module) => ({ default: module.SafeMarkdown })));
+
+const FOCUSABLE_SELECTOR = [
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'a[href]',
+  '[contenteditable="true"]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
+
+const getFocusableElements = (container: HTMLElement) => Array.from(
+  container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+).filter((element) => {
+  const computedStyle = window.getComputedStyle(element);
+  return computedStyle.display !== 'none' && computedStyle.visibility !== 'hidden';
+});
 
 interface MemoCardProps {
-  memo: MemoSummary;
+  memo: MemoSummary & {
+    contentTruncated?: boolean;
+    contentCharacterCount?: number;
+  };
   isAuthor?: boolean;
   isTrash?: boolean;
   onOpen?: (memo: MemoSummary) => void;
@@ -92,15 +116,21 @@ const VoiceNoteBlock = ({ voiceNote, isDark }: { voiceNote?: MemoSummary['voiceN
 
 const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveEdit, onRestore, onChangeVisibility, onDelete, allTags, onFillTags, onPin, onFavorite }: MemoCardProps) => {
   const { isDark } = useTheme();
-  const c = colors(isDark);
+  const { colors: c, spacing: s, radius: r, shadow, interaction: i } = designTokens(isDark);
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [fillLoading, setFillLoading] = useState(false);
   const [suggestedTags, setSuggestedTags] = useState<string[] | null>(null);
   const [checkedTags, setCheckedTags] = useState<string[]>([]);
+  const suggestionDialogRef = useRef<HTMLDivElement>(null);
+  const suggestionDialogOpenerRef = useRef<HTMLElement | null>(null);
+  const suggestionDialogId = useId();
+  const suggestionTitleId = `${suggestionDialogId}-title`;
+  const suggestionDescriptionId = `${suggestionDialogId}-description`;
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState('');
   const [editImages, setEditImages] = useState<string[]>([]);
@@ -115,7 +145,52 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
   const contentText = useMemo(() => stripTagSyntax(stripMarkdownImageSyntax(memo.content)), [memo.content]);
   const renderMarkdown = useMemo(() => shouldRenderMarkdown(contentText), [contentText]);
   const isLong = contentText.length > 200;
+  const isContentTruncated = memo.contentTruncated === true;
   const wordCount = useMemo(() => countWords(memo.content), [memo.content]);
+  const displayCharacterCount = memo.contentCharacterCount ?? wordCount;
+
+  const restoreMenuTriggerFocus = () => {
+    const trigger = menuRef.current?.querySelector<HTMLButtonElement>('button');
+    if (trigger?.isConnected) trigger.focus();
+  };
+
+  const closeMenu = (restoreFocus = true) => {
+    setMenuOpen(false);
+    if (restoreFocus) restoreMenuTriggerFocus();
+  };
+
+  const closeTagSuggestions = () => {
+    setSuggestedTags(null);
+    setCheckedTags([]);
+  };
+
+  useLayoutEffect(() => {
+    if (suggestedTags === null) return;
+    const previouslyFocused = suggestionDialogOpenerRef.current;
+    const dialog = suggestionDialogRef.current;
+    const firstFocusable = dialog ? getFocusableElements(dialog)[0] : null;
+    (firstFocusable ?? dialog)?.focus();
+
+    return () => {
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
+  }, [suggestedTags]);
+
+  useEffect(() => {
+    if (suggestedTags === null) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeTagSuggestions();
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [suggestedTags]);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current !== null) clearTimeout(toastTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (lightboxIndex === null) return;
@@ -140,12 +215,16 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
   }, [menuOpen]);
 
   const showToast = (msg: string) => {
+    if (toastTimerRef.current !== null) clearTimeout(toastTimerRef.current);
     setToastMsg(msg);
-    setTimeout(() => setToastMsg(null), 2000);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMsg(null);
+      toastTimerRef.current = null;
+    }, 2000);
   };
 
   const handleShare = async () => {
-    setMenuOpen(false);
+    closeMenu();
     try {
       const url = isAuthor && memo.visibility === 'private'
         ? (await createMemoShare(memo.id)).share.url
@@ -157,15 +236,25 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
     }
   };
 
+  const handleRevokeShare = async () => {
+    closeMenu();
+    try {
+      await revokeMemoShare(memo.id);
+      showToast('分享链接已撤销');
+    } catch (error) {
+      showToast(`撤销分享失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  };
+
   const handleFillTags = async () => {
     const config = getAiConfig();
     if (!config) {
-      setMenuOpen(false);
+      closeMenu();
       showToast('请先配置 AI');
       return;
     }
     if (!allTags?.length) {
-      setMenuOpen(false);
+      closeMenu();
       showToast('暂无可用标签，请先创建标签');
       return;
     }
@@ -202,14 +291,16 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
       if (!Array.isArray(tags)) throw new Error('AI 返回格式无法解析');
       const newTags = tags.filter((t: string) => !memo.tags.includes(t));
       if (newTags.length === 0) {
-        setMenuOpen(false);
+        closeMenu();
         showToast('未找到新的匹配标签');
       } else {
-        setMenuOpen(false);
+        suggestionDialogOpenerRef.current = menuRef.current?.querySelector<HTMLButtonElement>('button') ?? null;
+        closeMenu();
         setSuggestedTags(newTags);
         setCheckedTags(newTags);
       }
     } catch (e) {
+      closeMenu();
       showToast(`AI 调用失败: ${e instanceof Error ? e.message : '未知错误'}`);
     } finally {
       setFillLoading(false);
@@ -217,10 +308,35 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
   };
 
   const handleApplyTags = () => {
-    if (checkedTags.length === 0) { setSuggestedTags(null); return; }
+    if (checkedTags.length === 0) { closeTagSuggestions(); return; }
     const newContent = checkedTags.map((t) => `#${t}`).join(' ') + '\n' + memo.content;
     onFillTags?.(memo.id, newContent);
-    setSuggestedTags(null);
+    closeTagSuggestions();
+  };
+
+  const handleSuggestionDialogKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeTagSuggestions();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const focusableElements = getFocusableElements(event.currentTarget);
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      event.currentTarget.focus();
+      return;
+    }
+
+    const currentIndex = focusableElements.indexOf(document.activeElement as HTMLElement);
+    if (event.shiftKey && currentIndex <= 0) {
+      event.preventDefault();
+      focusableElements[focusableElements.length - 1].focus();
+    } else if (!event.shiftKey && (currentIndex === -1 || currentIndex === focusableElements.length - 1)) {
+      event.preventDefault();
+      focusableElements[0].focus();
+    }
   };
 
   const isInsideCodeBlock = (text: string, pos: number): boolean => {
@@ -529,7 +645,11 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
               </button>
             </div>
           </div>
-          {toastMsg ? <div style={{ ...styles.footer, borderTopColor: c.border, marginTop: 0 }}><span style={styles.copiedHint}>{toastMsg}</span></div> : null}
+          {toastMsg ? (
+            <div style={{ ...styles.footer, borderTopColor: c.border, marginTop: 0 }}>
+              <Toast message={toastMsg} />
+            </div>
+          ) : null}
         </article>
         {editTagDropdown && typeof document !== 'undefined' ? createPortal(
           <div style={{ position: 'fixed', top: editTagDropdown.top, left: editTagDropdown.left, zIndex: 9999, background: isDark ? '#2a2a2a' : '#fff', border: `1px solid ${c.borderMedium}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 160, maxWidth: 280, maxHeight: `${5 * 40}px`, overflowY: 'auto' }}>
@@ -550,45 +670,52 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
       <div style={styles.header}>
         <span style={{ ...styles.date, color: c.textMuted }}>{memo.pinnedAt && '📌 '}{memo.favoritedAt && isAuthor && <span style={{ color: '#f0c040' }}>⭐ </span>}{memo.displayDate}</span>
         <div style={styles.headerRight}>
-          {toastMsg ? <span style={styles.copiedHint}>{toastMsg}</span> : null}
+          {toastMsg ? (
+            <Toast message={toastMsg} />
+          ) : null}
           <div ref={menuRef} style={styles.menuWrap}>
-            <button
-              type="button"
-              aria-label="更多操作"
+            <IconButton
+              label="更多操作"
+              title="更多操作"
               style={styles.menuTrigger}
+              active={menuOpen}
+              aria-expanded={menuOpen}
               onClick={() => setMenuOpen((prev) => !prev)}
             >
               ···
-            </button>
+            </IconButton>
             {menuOpen ? (
-              <div style={{ ...styles.menuDropdown, background: c.cardBg, borderColor: c.border }}>
-                <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label="查看详情" onClick={() => { setMenuOpen(false); onOpen?.(memo); }}>查看详情</button>
-                <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label="分享" onClick={handleShare}>分享链接</button>
+              <MenuSurface label="Memo 操作" style={{ ...styles.menuDropdown, borderColor: c.border }}>
+                <MenuItem style={styles.menuItem} aria-label="查看详情" onClick={() => { setMenuOpen(false); onOpen?.(memo); }}>查看详情</MenuItem>
+                <MenuItem style={styles.menuItem} aria-label="分享" onClick={handleShare}>分享链接</MenuItem>
+                {isAuthor && memo.visibility === 'private' ? (
+                  <MenuItem style={styles.menuItem} aria-label="撤销分享" onClick={handleRevokeShare}>撤销分享链接</MenuItem>
+                ) : null}
                 {isAuthor && isTrash ? (
-                  <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label="恢复" onClick={() => { setMenuOpen(false); onRestore?.(memo); }}>恢复</button>
+                  <MenuItem style={styles.menuItem} aria-label="恢复" onClick={() => { setMenuOpen(false); onRestore?.(memo); }}>恢复</MenuItem>
                 ) : isAuthor ? (
                   <>
-                    <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label={memo.pinnedAt ? '取消置顶' : '置顶'} onClick={() => { setMenuOpen(false); onPin?.(memo); }}>{memo.pinnedAt ? '取消置顶' : '置顶'}</button>
-                    <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label={memo.favoritedAt ? '取消收藏' : '收藏'} onClick={() => { setMenuOpen(false); onFavorite?.(memo); }}>{memo.favoritedAt ? '取消收藏' : '收藏'}</button>
-                    <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label="编辑" onClick={startEditing}>编辑</button>
-                    <button
-                      type="button"
+                    <MenuItem style={styles.menuItem} aria-label={memo.pinnedAt ? '取消置顶' : '置顶'} onClick={() => { setMenuOpen(false); onPin?.(memo); }}>{memo.pinnedAt ? '取消置顶' : '置顶'}</MenuItem>
+                    <MenuItem style={styles.menuItem} aria-label={memo.favoritedAt ? '取消收藏' : '收藏'} onClick={() => { setMenuOpen(false); onFavorite?.(memo); }}>{memo.favoritedAt ? '取消收藏' : '收藏'}</MenuItem>
+                    <MenuItem style={styles.menuItem} aria-label="编辑" onClick={startEditing}>编辑</MenuItem>
+                    <MenuItem
+                      tone="accent"
                       style={{ ...styles.menuItem, color: fillLoading ? c.textMuted : '#3aa864' }}
                       aria-label={fillLoading ? '分析中...' : '填充标签（AI）'}
                       disabled={fillLoading}
                       onClick={handleFillTags}
                     >
                       {fillLoading ? '分析中...' : '填充标签（AI）'}
-                    </button>
+                    </MenuItem>
                     {memo.visibility === 'public' ? (
-                      <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label="设为私密" onClick={() => { setMenuOpen(false); onChangeVisibility?.(memo, 'private'); }}>设为私密</button>
+                      <MenuItem style={styles.menuItem} aria-label="设为私密" onClick={() => { setMenuOpen(false); onChangeVisibility?.(memo, 'private'); }}>设为私密</MenuItem>
                     ) : (
-                      <button type="button" style={{ ...styles.menuItem, color: c.textPrimary }} aria-label="设为公开" onClick={() => { setMenuOpen(false); onChangeVisibility?.(memo, 'public'); }}>设为公开</button>
+                      <MenuItem style={styles.menuItem} aria-label="设为公开" onClick={() => { setMenuOpen(false); onChangeVisibility?.(memo, 'public'); }}>设为公开</MenuItem>
                     )}
-                    <button type="button" style={styles.menuItemDanger} aria-label="删除" onClick={() => { setMenuOpen(false); onDelete?.(memo); }}>删除</button>
+                    <MenuItem tone="danger" style={styles.menuItemDanger} aria-label="删除" onClick={() => { setMenuOpen(false); onDelete?.(memo); }}>删除</MenuItem>
                   </>
                 ) : null}
-              </div>
+              </MenuSurface>
             ) : null}
           </div>
         </div>
@@ -606,12 +733,13 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
           </button>
         ))}
       </div>
-      <div style={isLong && !expanded ? { ...styles.content, color: c.textSecondary, maxHeight: collapsedContentMaxHeight, overflow: 'hidden' } : { ...styles.content, color: c.textSecondary }}>
+      <div style={isLong && (isContentTruncated || !expanded) ? { ...styles.content, color: c.textSecondary, maxHeight: collapsedContentMaxHeight, overflow: 'hidden' } : { ...styles.content, color: c.textSecondary }}>
         <VoiceNoteBlock voiceNote={memo.voiceNote} isDark={isDark} />
         {renderMarkdown ? (
-          <ReactMarkdown
-            rehypePlugins={[rehypeRaw]}
-            components={{
+          <Suspense fallback={<p style={{ margin: '0 0 8px', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{stripHtmlTags(contentText)}</p>}>
+            <LazySafeMarkdown
+              content={contentText}
+              components={{
               p: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{children}</p>,
               ul: ({ children }) => <ul style={{ margin: '0 0 8px', paddingLeft: 20 }}>{children}</ul>,
               ol: ({ children }) => <ol style={{ margin: '0 0 8px', paddingLeft: 20 }}>{children}</ol>,
@@ -626,19 +754,32 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
               code: ({ children, className }) => className
                 ? <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace', fontSize: 13 }}>{children}</code>
                 : <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace', fontSize: 13, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', padding: '2px 5px', borderRadius: 3 }}>{children}</code>,
-            }}
-          >
-            {contentText}
-          </ReactMarkdown>
+              }}
+            />
+          </Suspense>
         ) : (
           <p style={{ margin: '0 0 8px', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{contentText}</p>
         )}
       </div>
-      {isLong ? (
+      {isContentTruncated ? (
         <button
           type="button"
           style={styles.expandButton}
-          onClick={() => setExpanded((prev) => !prev)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen?.(memo);
+          }}
+        >
+          查看全文
+        </button>
+      ) : isLong ? (
+        <button
+          type="button"
+          style={styles.expandButton}
+          onClick={(event) => {
+            event.stopPropagation();
+            setExpanded((prev) => !prev);
+          }}
         >
           {expanded ? '收起' : '展开'}
         </button>
@@ -646,12 +787,12 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
       {imageUrls.length > 0 ? (
         <div style={styles.previewGrid}>
           {imageUrls.map((url, i) => (
-            <img key={url} src={getImagePreviewUrl(url)} alt="memo preview" loading="lazy" decoding="async" style={styles.previewImage} onClick={() => setLightboxIndex(i)} />
+            <img key={url} src={memo.visibility === 'public' ? getImagePreviewUrl(url, 64) : url} alt="memo preview" loading="lazy" decoding="async" width={64} height={64} style={styles.previewImage} onClick={() => setLightboxIndex(i)} />
           ))}
         </div>
       ) : null}
       <div style={{ ...styles.footer, borderTopColor: c.border }}>
-        <span style={styles.footerText}>字数: {wordCount}</span>
+        <span style={styles.footerText}>字数: {displayCharacterCount}</span>
         <span style={styles.footerText}>创建于 {formatTime(memo.createdAt)}</span>
         {memo.updatedAt !== memo.createdAt ? <span style={styles.footerText}>编辑于 {formatTime(memo.updatedAt)}</span> : null}
       </div>
@@ -691,38 +832,50 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
         </div>
       ) : null}
       {suggestedTags !== null ? (
-        <div style={styles.lightbox} onClick={() => setSuggestedTags(null)}>
+        <div
+          role="presentation"
+          style={{ ...styles.lightbox, background: c.overlay, cursor: 'default' }}
+          onClick={(e) => { if (e.target === e.currentTarget) closeTagSuggestions(); }}
+        >
           <div
-            style={{ ...styles.confirmModal, background: c.cardBg }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={suggestionTitleId}
+            aria-describedby={suggestionDescriptionId}
+            ref={suggestionDialogRef}
+            tabIndex={-1}
+            onKeyDown={handleSuggestionDialogKeyDown}
+            style={{ ...styles.confirmModal, background: c.cardBg, color: c.textPrimary, borderColor: c.borderMedium, borderRadius: r.lg, padding: s['2xl'], boxShadow: shadow.panel, maxHeight: '85vh', overflowY: 'auto' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ margin: '0 0 12px', fontSize: 15, color: c.textPrimary }}>AI 建议添加以下标签</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
-              {suggestedTags.map((tag) => (
-                <label key={tag} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: c.textPrimary }}>
-                  <input
-                    type="checkbox"
-                    aria-label={`#${tag}`}
-                    checked={checkedTags.includes(tag)}
-                    onChange={(e) => {
-                      setCheckedTags((prev) =>
-                        e.target.checked ? [...prev, tag] : prev.filter((t) => t !== tag),
-                      );
-                    }}
-                  />
-                  <span style={{ color: '#3aa864', fontWeight: 500 }}>#{tag}</span>
-                </label>
-              ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: s.md, marginBottom: s.xs }}>
+              <h2 id={suggestionTitleId} style={{ margin: 0, fontSize: 16, color: c.textPrimary }}>AI 建议添加以下标签</h2>
+              <IconButton label="关闭 AI 标签建议" onClick={closeTagSuggestions} style={{ fontSize: 20, lineHeight: 1, color: c.textTertiary }}>×</IconButton>
             </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button type="button" onClick={() => setSuggestedTags(null)}
-                style={{ border: `1px solid ${c.borderMedium}`, background: c.cardBg, color: c.textPrimary, borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}>
-                取消
-              </button>
-              <button type="button" aria-label="应用" onClick={handleApplyTags}
-                style={{ border: 'none', background: '#3aa864', color: '#fff', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                应用
-              </button>
+            <p id={suggestionDescriptionId} style={{ margin: `0 0 ${s.xl}px`, fontSize: 13, color: c.textMuted }}>请选择要添加到此 Memo 的标签</p>
+            <fieldset style={{ border: 0, padding: 0, margin: `0 0 ${s.xl}px` }}>
+              <legend style={{ padding: 0, marginBottom: s.lg, fontSize: 13, color: c.textSecondary }}>可添加的标签</legend>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: s.lg }}>
+                {suggestedTags.map((tag) => (
+                  <label key={tag} style={{ display: 'flex', alignItems: 'center', gap: s.md, cursor: 'pointer', fontSize: 14, color: c.textPrimary }}>
+                    <input
+                      type="checkbox"
+                      aria-label={`#${tag}`}
+                      checked={checkedTags.includes(tag)}
+                      onChange={(e) => {
+                        setCheckedTags((prev) =>
+                          e.target.checked ? [...prev, tag] : prev.filter((t) => t !== tag),
+                        );
+                      }}
+                    />
+                    <span style={{ color: c.tagColor, fontWeight: 500 }}>#{tag}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <div style={{ display: 'flex', gap: s.md, justifyContent: 'flex-end' }}>
+              <Button variant="secondary" size="sm" onClick={closeTagSuggestions}>取消</Button>
+              <Button variant="primary" size="sm" aria-label="应用" onClick={handleApplyTags}>应用</Button>
             </div>
           </div>
         </div>
@@ -739,6 +892,8 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     padding: '16px 20px',
     border: '1px solid #f0f0f0',
+    contentVisibility: 'auto',
+    containIntrinsicSize: '0 180px',
   },
   header: {
     display: 'flex',
@@ -752,9 +907,11 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   copiedHint: {
+    display: 'inline-flex',
+    alignItems: 'center',
     fontSize: 12,
-    color: '#3aa864',
     fontWeight: 500,
+    border: '1px solid',
   },
   date: {
     color: '#999',
@@ -764,12 +921,7 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'relative',
   },
   menuTrigger: {
-    border: 'none',
-    background: 'transparent',
-    color: '#999',
-    cursor: 'pointer',
     fontSize: 16,
-    padding: '2px 6px',
     lineHeight: 1,
     letterSpacing: 1,
   },

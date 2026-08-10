@@ -4,6 +4,14 @@ export interface V1CreateMemoRequest {
   content: string;
   visibility?: MemoVisibility;
   displayDate?: string;
+  client_id?: string;
+}
+
+export interface ParsedV1CreateMemoRequest {
+  content: string;
+  visibility: MemoVisibility;
+  displayDate: string;
+  client_id?: string;
 }
 
 export interface V1UpdateMemoRequest {
@@ -47,7 +55,19 @@ const parseDisplayDate = (value: unknown): string | undefined => {
   throw new ContractError('displayDate must use YYYY-MM-DD format');
 };
 
-export const parseCreateMemoRequest = (value: unknown): Required<V1CreateMemoRequest> => {
+const parseClientId = (value: unknown): string | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') {
+    throw new ContractError('client_id must be a string');
+  }
+  const clientId = value.trim();
+  if (!clientId || clientId.length > 128) {
+    throw new ContractError('client_id must contain 1 to 128 characters');
+  }
+  return clientId;
+};
+
+export const parseCreateMemoRequest = (value: unknown): ParsedV1CreateMemoRequest => {
   if (!isRecord(value)) {
     throw new ContractError('request body must be an object');
   }
@@ -57,10 +77,12 @@ export const parseCreateMemoRequest = (value: unknown): Required<V1CreateMemoReq
     throw new ContractError('content is required');
   }
 
+  const client_id = parseClientId(value.client_id ?? value.clientId);
   return {
     content,
     visibility: parseVisibility(value.visibility) ?? 'public',
     displayDate: parseDisplayDate(value.displayDate) ?? new Date().toISOString().slice(0, 10),
+    ...(client_id ? { client_id } : {}),
   };
 };
 

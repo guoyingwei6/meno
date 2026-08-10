@@ -71,7 +71,7 @@ jobs:
         run: node scripts/write-ci-wrangler-config.mjs
 
       - name: Apply D1 migrations
-        run: node scripts/apply-d1-migrations.mjs --config=worker/wrangler.ci.toml --database=meno
+        run: node scripts/apply-d1-migrations.mjs --remote --config=worker/wrangler.ci.toml --database=meno
 
       - name: Build Worker
         run: ./node_modules/.bin/wrangler deploy --config worker/wrangler.ci.toml --dry-run

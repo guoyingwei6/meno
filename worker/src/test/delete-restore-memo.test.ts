@@ -11,6 +11,7 @@ describe('memo trash flow', () => {
       method: 'DELETE',
       headers: {
         Cookie: 'meno_session=valid-author-session',
+        Origin: 'https://meno.guoyingwei.top',
       },
     }, env);
 
@@ -24,6 +25,7 @@ describe('memo trash flow', () => {
       method: 'POST',
       headers: {
         Cookie: 'meno_session=valid-author-session',
+        Origin: 'https://meno.guoyingwei.top',
       },
     }, env);
 

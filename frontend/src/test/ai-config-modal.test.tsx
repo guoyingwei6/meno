@@ -7,6 +7,55 @@ beforeEach(() => {
 });
 
 describe('AiConfigModal', () => {
+  it('renders an accessible dialog with the shared close and action buttons', () => {
+    render(<AiConfigModal onClose={vi.fn()} />);
+
+    const dialog = screen.getByRole('dialog', { name: 'AI 配置' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByRole('button', { name: '关闭 AI 配置' })).toBeInTheDocument();
+
+    const saveButton = screen.getByRole('button', { name: '保存' });
+    fireEvent.mouseEnter(saveButton);
+    fireEvent.focus(saveButton);
+    expect(saveButton.style.filter).toBe('brightness(0.95)');
+    expect(saveButton.style.boxShadow).toContain('0 0 0 3px');
+  });
+
+  it('moves focus into the dialog, wraps Tab, and restores the opener focus', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+
+    const { unmount } = render(<AiConfigModal onClose={vi.fn()} />);
+    const closeButton = screen.getByRole('button', { name: '关闭 AI 配置' });
+    const saveButton = screen.getByRole('button', { name: '保存' });
+
+    expect(closeButton).toHaveFocus();
+
+    fireEvent.focus(saveButton);
+    fireEvent.keyDown(saveButton, { key: 'Tab' });
+    expect(closeButton).toHaveFocus();
+
+    fireEvent.focus(closeButton);
+    fireEvent.keyDown(closeButton, { key: 'Tab', shiftKey: true });
+    expect(saveButton).toHaveFocus();
+
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+
+  it('closes from the overlay and Escape key', () => {
+    const onClose = vi.fn();
+    const { container } = render(<AiConfigModal onClose={onClose} />);
+
+    fireEvent.click(container.firstElementChild!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
   it('renders empty fields when no config saved', () => {
     render(<AiConfigModal onClose={vi.fn()} />);
     expect(screen.getByPlaceholderText('https://api.openai.com/v1')).toHaveValue('');

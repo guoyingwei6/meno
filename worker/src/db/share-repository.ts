@@ -6,6 +6,7 @@ export interface MemoShare {
   token: string;
   createdAt: string;
   revokedAt: string | null;
+  expiresAt: string | null;
 }
 
 const mapShareRow = (row: Record<string, unknown>): MemoShare => ({
@@ -13,25 +14,26 @@ const mapShareRow = (row: Record<string, unknown>): MemoShare => ({
   token: String(row.token),
   createdAt: String(row.created_at),
   revokedAt: row.revoked_at ? String(row.revoked_at) : null,
+  expiresAt: row.expires_at ? String(row.expires_at) : null,
 });
 
 const createToken = () => crypto.randomUUID().replace(/-/g, '');
 
-export const createMemoShare = async (db: D1Database, memoId: number): Promise<MemoShare | null> => {
+export const createMemoShare = async (db: D1Database, memoId: number, expiresAt: string | null = null): Promise<MemoShare | null> => {
   const memo = await getAuthorMemoById(db, memoId);
   if (!memo || memo.deletedAt) return null;
 
   const existing = await db
-    .prepare('SELECT * FROM memo_shares WHERE memo_id = ? AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1')
-    .bind(memoId)
+    .prepare('SELECT * FROM memo_shares WHERE memo_id = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?) ORDER BY created_at DESC LIMIT 1')
+    .bind(memoId, new Date().toISOString())
     .first<Record<string, unknown>>();
   if (existing) return mapShareRow(existing);
 
   const now = new Date().toISOString();
   const token = createToken();
   const created = await db
-    .prepare('INSERT INTO memo_shares (memo_id, token, created_at, revoked_at) VALUES (?, ?, ?, NULL) RETURNING *')
-    .bind(memoId, token, now)
+    .prepare('INSERT INTO memo_shares (memo_id, token, created_at, revoked_at, expires_at) VALUES (?, ?, ?, NULL, ?) RETURNING *')
+    .bind(memoId, token, now, expiresAt)
     .first<Record<string, unknown>>();
 
   return created ? mapShareRow(created) : null;
@@ -54,10 +56,11 @@ export const getSharedMemoByToken = async (db: D1Database, token: string): Promi
        INNER JOIN memos ON memos.id = memo_shares.memo_id
        WHERE memo_shares.token = ?
          AND memo_shares.revoked_at IS NULL
+         AND (memo_shares.expires_at IS NULL OR memo_shares.expires_at > ?)
          AND memos.deleted_at IS NULL
        LIMIT 1`,
     )
-    .bind(token)
+    .bind(token, new Date().toISOString())
     .first<Record<string, unknown>>();
 
   if (!row) return null;

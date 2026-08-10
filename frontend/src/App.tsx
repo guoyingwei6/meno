@@ -5,10 +5,22 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { HomePage } from './pages/HomePage';
 import { ThemeProvider } from './lib/theme';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Keep lazy pages from inheriting TanStack Query's three retries and
+      // focus-triggered refetches. HomePage overrides staleTime by data type.
+      retry: 1,
+      staleTime: 15_000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+    },
+  },
+});
 const MemoDetailPage = lazy(() => import('./pages/MemoDetailPage').then((module) => ({ default: module.MemoDetailPage })));
 const MemoEditPage = lazy(() => import('./pages/MemoEditPage').then((module) => ({ default: module.MemoEditPage })));
 const TagPage = lazy(() => import('./pages/TagPage').then((module) => ({ default: module.TagPage })));
+const SharePage = lazy(() => import('./pages/SharePage').then((module) => ({ default: module.SharePage })));
 
 export const App = () => {
   return (
@@ -20,6 +32,7 @@ export const App = () => {
               <Route path="/" element={<HomePage />} />
               <Route path="/memos/:slug" element={<MemoDetailPage />} />
               <Route path="/memos/:slug/edit" element={<MemoEditPage />} />
+              <Route path="/share/:token" element={<SharePage />} />
               <Route path="/tags/*" element={<TagPage />} />
             </Routes>
           </Suspense>
