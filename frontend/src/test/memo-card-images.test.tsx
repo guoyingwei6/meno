@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { MemoCard } from '../components/MemoCard';
 
@@ -62,5 +62,35 @@ describe('MemoCard image previews', () => {
       'src',
       'https://api.example.com/api/assets/uploads/private.png',
     );
+  });
+
+  it('renders the image lightbox at the document root instead of inside the memo card', () => {
+    render(
+      <MemoCard
+        memo={{
+          id: 3,
+          slug: 'fullscreen-image-card',
+          content: '![](https://cdn.example.com/uploads/fullscreen.png)',
+          excerpt: 'fullscreen image',
+          visibility: 'public',
+          displayDate: '2026-03-25',
+          createdAt: '2026-03-25T09:00:00.000Z',
+          updatedAt: '2026-03-25T09:00:00.000Z',
+          publishedAt: '2026-03-25T09:00:00.000Z',
+          deletedAt: null,
+          pinnedAt: null,
+          favoritedAt: null,
+          previousVisibility: null,
+          hasImages: true,
+          imageCount: 1,
+          tagCount: 0,
+          tags: [],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('img', { name: 'memo preview' }));
+
+    expect(screen.getByRole('img', { name: 'full size' }).closest('article')).toBeNull();
   });
 });

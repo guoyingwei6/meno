@@ -796,7 +796,7 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
         <span style={styles.footerText}>创建于 {formatTime(memo.createdAt)}</span>
         {memo.updatedAt !== memo.createdAt ? <span style={styles.footerText}>编辑于 {formatTime(memo.updatedAt)}</span> : null}
       </div>
-      {lightboxIndex !== null ? (
+      {lightboxIndex !== null && typeof document !== 'undefined' ? createPortal(
         <div
           style={styles.lightbox}
           onClick={() => setLightboxIndex(null)}
@@ -829,7 +829,8 @@ const MemoCardComponent = ({ memo, isAuthor, isTrash, onOpen, onOpenTag, onSaveE
           {imageUrls.length > 1 && (
             <span style={styles.lightboxCounter}>{lightboxIndex + 1} / {imageUrls.length}</span>
           )}
-        </div>
+        </div>,
+        document.body,
       ) : null}
       {suggestedTags !== null ? (
         <div
