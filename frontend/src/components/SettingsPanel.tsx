@@ -4,6 +4,7 @@ import type { AppSettings } from '../lib/api';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
 import { Dialog } from './ui/Dialog';
+import { usePwaInstall } from './PwaInstallProvider';
 
 interface SettingsPanelProps {
   settings: AppSettings;
@@ -16,6 +17,7 @@ interface SettingsPanelProps {
 export const SettingsPanel = ({ settings, saving = false, error = null, onClose, onSave }: SettingsPanelProps) => {
   const { isDark } = useTheme();
   const { colors: c, spacing: s, radius: r } = designTokens(isDark);
+  const { isInstallable, isInstalled, isIOS, install } = usePwaInstall();
   const [siteTitle, setSiteTitle] = useState(settings.siteTitle);
   const [defaultVisibility, setDefaultVisibility] = useState<AppSettings['defaultVisibility']>(settings.defaultVisibility);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -75,6 +77,34 @@ export const SettingsPanel = ({ settings, saving = false, error = null, onClose,
             <Button variant="primary" type="submit" disabled={saving}>{saving ? '保存中...' : '保存设置'}</Button>
           </div>
         </form>
+        <div style={{ ...styles.installSection, borderTopColor: c.borderLight, marginTop: s['3xl'] }}>
+          <div style={styles.installHeader}>
+            <span style={{ ...styles.installTitle, color: c.textPrimary }}>应用安装</span>
+            {isInstalled ? (
+              <span style={{ ...styles.installBadge, color: c.accent }}>已安装</span>
+            ) : null}
+          </div>
+          {isInstalled ? (
+            <p style={{ ...styles.installHint, color: c.textSecondary }}>
+              当前已在独立应用窗口中运行 Meno，可像桌面应用一样使用。
+            </p>
+          ) : isInstallable ? (
+            <div style={styles.installRow}>
+              <p style={{ ...styles.installHint, color: c.textSecondary, marginBottom: s.md }}>
+                安装后可从桌面图标打开，获得独立的窗口体验。
+              </p>
+              <Button variant="primary" size="sm" type="button" onClick={install}>安装为应用</Button>
+            </div>
+          ) : isIOS ? (
+            <p style={{ ...styles.installHint, color: c.textSecondary }}>
+              在 Safari 中点击「分享」→「添加到主屏幕」，即可从主屏幕图标全屏打开。
+            </p>
+          ) : (
+            <p style={{ ...styles.installHint, color: c.textSecondary }}>
+              在浏览器地址栏或菜单中选择「安装」/「添加到主屏幕」即可安装 Meno。
+            </p>
+          )}
+        </div>
     </Dialog>
   );
 };
@@ -95,4 +125,10 @@ const styles: Record<string, React.CSSProperties> = {
   input: { width: '100%', boxSizing: 'border-box', border: '1px solid', fontSize: 14 },
   error: { marginBottom: 12, color: '#c24b4b', fontSize: 13 },
   actions: { display: 'flex', justifyContent: 'flex-end' },
+  installSection: { borderTop: '1px solid', paddingTop: 16 },
+  installHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  installTitle: { fontSize: 14, fontWeight: 600 },
+  installBadge: { fontSize: 12, fontWeight: 600 },
+  installHint: { margin: 0, fontSize: 13, lineHeight: 1.6 },
+  installRow: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start' },
 };

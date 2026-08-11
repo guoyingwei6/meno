@@ -4,6 +4,9 @@ import type { CSSProperties } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { HomePage } from './pages/HomePage';
 import { ThemeProvider } from './lib/theme';
+import { PwaInstallProvider } from './components/PwaInstallProvider';
+import { PwaInstallPrompt } from './components/PwaInstallPrompt';
+import { PwaUpdateToast } from './components/PwaUpdateToast';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,15 +30,19 @@ export const App = () => {
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
-          <Suspense fallback={<div style={styles.loading}>Loading...</div>}>
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/memos/:slug" element={<MemoDetailPage />} />
-              <Route path="/memos/:slug/edit" element={<MemoEditPage />} />
-              <Route path="/share/:token" element={<SharePage />} />
-              <Route path="/tags/*" element={<TagPage />} />
-            </Routes>
-          </Suspense>
+          <PwaInstallProvider>
+            <Suspense fallback={<div style={styles.loading}>Loading...</div>}>
+              <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/memos/:slug" element={<MemoDetailPage />} />
+                <Route path="/memos/:slug/edit" element={<MemoEditPage />} />
+                <Route path="/share/:token" element={<SharePage />} />
+                <Route path="/tags/*" element={<TagPage />} />
+              </Routes>
+            </Suspense>
+            <PwaInstallPrompt />
+            <PwaUpdateToast />
+          </PwaInstallProvider>
         </BrowserRouter>
       </QueryClientProvider>
     </ThemeProvider>
