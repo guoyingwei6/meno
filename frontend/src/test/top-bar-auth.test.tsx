@@ -29,4 +29,11 @@ describe('TopBar auth actions', () => {
     expect(screen.getByRole('button', { name: '导入/导出' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'AI 配置' })).toBeInTheDocument();
   });
+
+  it('uses the same line-icon treatment for theme and settings actions', () => {
+    render(<TopBar authenticated={true} githubLogin="guoyingwei" onLogout={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: /主题:/ }).querySelector('svg')).not.toBeNull();
+    expect(screen.getByRole('button', { name: '设置' }).querySelector('svg')).not.toBeNull();
+  });
 });
