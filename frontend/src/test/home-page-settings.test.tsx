@@ -38,7 +38,9 @@ describe('HomePage settings integration', () => {
     );
 
     expect(await screen.findByLabelText('可见性')).toHaveValue('private');
-    fireEvent.click(screen.getByRole('button', { name: '打开设置' }));
+    const settingsButton = await screen.findByRole('button', { name: '设置' });
+    expect(screen.getAllByRole('button', { name: /设置/ })).toHaveLength(1);
+    fireEvent.click(settingsButton);
     expect(await screen.findByRole('dialog', { name: '设置' })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('站点标题'), { target: { value: '我的 Meno' } });

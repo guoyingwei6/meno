@@ -603,6 +603,7 @@ export const HomePage = () => {
           onRefresh={async () => { await queryClient.refetchQueries(); }}
           onImportExport={() => setShowImportExport(true)}
           onAiConfig={() => setShowAiConfig(true)}
+          onSettings={() => { setSettingsSaveError(null); setShowSettings(true); }}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />
@@ -614,18 +615,6 @@ export const HomePage = () => {
           </Suspense>
         ) : (
           <>
-            {isAuthor && (
-              <div style={styles.settingsEntry}>
-                <button
-                  type="button"
-                  aria-label="打开设置"
-                  onClick={() => { setSettingsSaveError(null); setShowSettings(true); }}
-                  style={{ ...styles.retryButton, color: c.textPrimary, borderColor: c.borderMedium }}
-                >
-                  设置
-                </button>
-              </div>
-            )}
             {outboxRecords.length > 0 && (
               <div role="status" style={{ ...styles.outboxBanner, background: c.cardBg, borderColor: c.borderMedium, color: c.textMuted }}>
                 <span>{outboxRecords.length} 条笔记在待发送箱{outboxRecords.some((record) => record.status === 'failed') ? '（上次发送失败）' : ''}</span>
@@ -817,11 +806,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     border: '1px solid',
     fontSize: 13,
-  },
-  settingsEntry: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    marginBottom: 8,
   },
   retryButton: {
     border: '1px solid',
